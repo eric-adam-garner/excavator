@@ -342,6 +342,49 @@ class Mesh:
         loops_halfedges = self.trace_boundary_loops_halfedges()
         return [[he.origin.xy for he in loop] for loop in loops_halfedges]
 
+    def _boundary_loop_signed_area(self, loop_halfedges):
+        """
+        Compute signed area of a boundary loop.
+
+        Positive → CCW → outer boundary
+        Negative → CW → hole
+        """
+        area = 0.0
+
+        for he in loop_halfedges:
+            x0, y0 = he.origin.xy
+            x1, y1 = he.dest.xy
+            area += x0 * y1 - x1 * y0
+
+        return area * 0.5
+
+
+    def classify_boundary_loops(self):
+        """
+        Classify boundary loops into outer loops and holes.
+
+        Returns
+        -------
+        outer_loops : list[list[int]]
+        hole_loops : list[list[int]]
+        """
+
+        loops_he = self.trace_boundary_loops_halfedges()
+
+        outer_loops = []
+        hole_loops = []
+
+        for loop in loops_he:
+            area = self._boundary_loop_signed_area(loop)
+
+            verts = [he.origin.id for he in loop]
+
+            if area > 0:
+                outer_loops.append(verts)
+            else:
+                hole_loops.append(verts)
+
+        return outer_loops, hole_loops
 
     def summary(self) -> str:
         num_boundary_halfedges = len(self.boundary_halfedges())
