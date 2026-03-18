@@ -458,6 +458,47 @@ class PSLG:
             hole_loops=hole_loops,
         )
 
+    def _reverse_loop(self, vids: list[int]):
+        """
+        Reverse loop orientation in-place by reversing its segments.
+        """
+        n = len(vids)
+
+        edges = [(vids[i], vids[(i + 1) % n]) for i in range(n)]
+        rev_edges = [(b, a) for (a, b) in reversed(edges)]
+
+        # remove old segments
+        seg_set = set(edges)
+        self.segments = [s for s in self.segments if (s.v0, s.v1) not in seg_set]
+
+        # add reversed
+        for v0, v1 in rev_edges:
+            self.add_segment(v0, v1)
+
+    def normalize_orientation(self):
+        """
+        Enforce:
+            outer loops → CCW
+            hole loops → CW
+
+        Modifies PSLG in-place.
+        """
+
+        nesting = self.classify_loops()
+
+        for i, loop in enumerate(nesting.loops):
+
+            area = nesting.loop_areas[i]
+            depth = nesting.depths[i]
+
+            should_be_ccw = depth % 2 == 0
+
+            if should_be_ccw and area < 0:
+                self._reverse_loop(loop)
+
+            if not should_be_ccw and area > 0:
+                self._reverse_loop(loop)
+
     # --------------------------------------------------------
     # VALIDATION
     # --------------------------------------------------------
