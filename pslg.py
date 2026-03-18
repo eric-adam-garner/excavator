@@ -8,6 +8,34 @@ from dataclasses import (
 
 
 @dataclass
+class PSLGReport:
+    is_valid: bool
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    stats: dict = field(default_factory=dict)
+
+    def __repr__(self) -> str:
+        lines = [f"PSLGReport(is_valid={self.is_valid})"]
+
+        if self.errors:
+            lines.append("Errors:")
+            for err in self.errors:
+                lines.append(f"  - {err}")
+
+        if self.warnings:
+            lines.append("Warnings:")
+            for warn in self.warnings:
+                lines.append(f"  - {warn}")
+
+        if self.stats:
+            lines.append("Stats:")
+            for key, value in self.stats.items():
+                lines.append(f"  - {key}: {value}")
+
+        return "\n".join(lines)
+
+
+@dataclass
 class PSLGVertex:
     id: int
     x: float
@@ -308,30 +336,144 @@ class PSLG:
 
         return issues
 
+    def validate(self) -> PSLGReport:
+        errors: list[str] = []
+        warnings: list[str] = []
+
+        num_vertices = len(self.vertices)
+        num_segments = len(self.segments)
+
+        # -------------------------------------------------
+        # Degenerate segments
+        # -------------------------------------------------
+        degenerate_segments: list[int] = []
+
+        for s in self.segments:
+            if s.v0 == s.v1:
+                degenerate_segments.append(s.id)
+                errors.append(f"Segment {s.id} is degenerate (same endpoint id {s.v0})")
+                continue
+
+            a = self.vertices[s.v0].xy
+            b = self.vertices[s.v1].xy
+            dx = b[0] - a[0]
+            dy = b[1] - a[1]
+            if dx * dx + dy * dy <= self.tol * self.tol:
+                degenerate_segments.append(s.id)
+                errors.append(f"Segment {s.id} has near-zero length")
+
+        # -------------------------------------------------
+        # Duplicate segments
+        # -------------------------------------------------
+        duplicate_segment_pairs: list[tuple[int, int]] = []
+        seen_undirected: dict[tuple[int, int], int] = {}
+
+        for s in self.segments:
+            key = s.undirected_key()
+            if key in seen_undirected:
+                other = seen_undirected[key]
+                duplicate_segment_pairs.append((other, s.id))
+                errors.append(
+                    f"Duplicate segment detected between segments {other} and {s.id} " f"with undirected key {key}"
+                )
+            else:
+                seen_undirected[key] = s.id
+
+        # -------------------------------------------------
+        # Segment intersections
+        # -------------------------------------------------
+        intersection_issues = self.find_segment_intersections()
+
+        proper_intersections = [issue for issue in intersection_issues if issue["type"] == "proper"]
+        t_junctions = [issue for issue in intersection_issues if issue["type"] == "t_junction"]
+        overlaps = [issue for issue in intersection_issues if issue["type"] == "overlap"]
+
+        for issue in proper_intersections:
+            errors.append(f"Proper intersection between segments {issue['seg_a']} and {issue['seg_b']}")
+
+        for issue in t_junctions:
+            errors.append(f"T-junction between segments {issue['seg_a']} and {issue['seg_b']}")
+
+        for issue in overlaps:
+            errors.append(f"Colinear overlap between segments {issue['seg_a']} and {issue['seg_b']}")
+
+        # -------------------------------------------------
+        # Vertices on segment interiors
+        # -------------------------------------------------
+        vertex_on_segment_issues = self.find_vertices_on_segments()
+
+        for issue in vertex_on_segment_issues:
+            errors.append(f"Vertex {issue['vertex']} lies on interior of segment {issue['segment']}")
+
+        # -------------------------------------------------
+        # Vertex degree analysis
+        # -------------------------------------------------
+        degree = {v.id: 0 for v in self.vertices}
+
+        for s in self.segments:
+            if s.v0 in degree:
+                degree[s.v0] += 1
+            if s.v1 in degree:
+                degree[s.v1] += 1
+
+        isolated_vertices = [vid for vid, d in degree.items() if d == 0]
+        dangling_vertices = [vid for vid, d in degree.items() if d == 1]
+        high_valence_vertices = [vid for vid, d in degree.items() if d > 2]
+
+        for vid in isolated_vertices:
+            warnings.append(f"Vertex {vid} is isolated (degree 0)")
+
+        for vid in dangling_vertices:
+            warnings.append(f"Vertex {vid} is dangling (degree 1)")
+
+        # High valence is not always invalid in a general PSLG, so warning only.
+        for vid in high_valence_vertices:
+            warnings.append(f"Vertex {vid} has high valence (degree {degree[vid]})")
+
+        # -------------------------------------------------
+        # Coordinate duplicates not merged by hashing
+        # Mostly defensive; ideally add_vertex already avoids these.
+        # -------------------------------------------------
+        near_duplicate_vertices: list[tuple[int, int]] = []
+
+        for i in range(len(self.vertices)):
+            pi = self.vertices[i].xy
+            for j in range(i + 1, len(self.vertices)):
+                pj = self.vertices[j].xy
+                dx = pi[0] - pj[0]
+                dy = pi[1] - pj[1]
+                if dx * dx + dy * dy <= self.tol * self.tol:
+                    near_duplicate_vertices.append((i, j))
+                    errors.append(f"Vertices {i} and {j} are duplicate/near-duplicate within tolerance")
+
+        stats = {
+            "num_vertices": num_vertices,
+            "num_segments": num_segments,
+            "num_degenerate_segments": len(degenerate_segments),
+            "num_duplicate_segments": len(duplicate_segment_pairs),
+            "num_proper_intersections": len(proper_intersections),
+            "num_t_junctions": len(t_junctions),
+            "num_overlaps": len(overlaps),
+            "num_vertices_on_segments": len(vertex_on_segment_issues),
+            "num_isolated_vertices": len(isolated_vertices),
+            "num_dangling_vertices": len(dangling_vertices),
+            "num_high_valence_vertices": len(high_valence_vertices),
+            "degree_map": degree,
+            "proper_intersections": proper_intersections,
+            "t_junctions": t_junctions,
+            "overlaps": overlaps,
+            "vertices_on_segments": vertex_on_segment_issues,
+            "duplicate_segment_pairs": duplicate_segment_pairs,
+            "near_duplicate_vertices": near_duplicate_vertices,
+        }
+
+        is_valid = len(errors) == 0
+        return PSLGReport(
+            is_valid=is_valid,
+            errors=errors,
+            warnings=warnings,
+            stats=stats,
+        )
+
     def summary(self):
         return f"PSLG(\n" f"  vertices={self.num_vertices()},\n" f"  segments={self.num_segments()}\n" f")"
-
-pslg = PSLG()
-
-a = pslg.add_vertex(0, 0)
-b = pslg.add_vertex(4, 0)
-c = pslg.add_vertex(2, 0)
-d = pslg.add_vertex(2, 3)
-
-pslg.add_segment(a, b)
-pslg.add_segment(c, d)
-
-print(pslg.find_segment_intersections())
-print(pslg.find_vertices_on_segments())
-
-pslg = PSLG()
-pslg.add_polygon([(0, 0), (4, 0), (4, 4), (0, 4)])
-
-print(pslg.find_vertices_on_segments())
-
-pslg = PSLG()
-
-pslg.add_polygon([(0, 0), (4, 0), (4, 4), (0, 4)])
-v = pslg.add_vertex(2, 0)
-
-print(pslg.find_vertices_on_segments())
