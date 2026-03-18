@@ -711,6 +711,8 @@ class Mesh:
             "euler_characteristic": euler,
             "boundary_edge_count": boundary_edge_count,
             "interior_edge_count": interior_edge_count,
+            "nonmanifold_edges": nonmanifold_edges,
+            "components": components,
         }
 
         is_valid = len(errors) == 0
