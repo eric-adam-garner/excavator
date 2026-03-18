@@ -8,6 +8,34 @@ from typing import Iterable
 
 
 @dataclass
+class TopologyReport:
+    is_valid: bool
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    stats: dict = field(default_factory=dict)
+
+    def __repr__(self) -> str:
+        lines = [f"TopologyReport(is_valid={self.is_valid})"]
+
+        if self.errors:
+            lines.append("Errors:")
+            for err in self.errors:
+                lines.append(f"  - {err}")
+
+        if self.warnings:
+            lines.append("Warnings:")
+            for warn in self.warnings:
+                lines.append(f"  - {warn}")
+
+        if self.stats:
+            lines.append("Stats:")
+            for key, value in self.stats.items():
+                lines.append(f"  - {key}: {value}")
+
+        return "\n".join(lines)
+
+
+@dataclass
 class Vertex:
     id: int
     x: float
@@ -93,10 +121,7 @@ class HalfEdge:
         dest_id = self.dest.id if self.dest is not None else None
         face_id = self.face.id if self.face is not None else None
         twin_id = self.twin.id if self.twin is not None else None
-        return (
-            f"HalfEdge(id={self.id}, origin={self.origin.id}, dest={dest_id}, "
-            f"face={face_id}, twin={twin_id})"
-        )
+        return f"HalfEdge(id={self.id}, origin={self.origin.id}, dest={dest_id}, " f"face={face_id}, twin={twin_id})"
 
 
 @dataclass
@@ -131,10 +156,7 @@ class Mesh:
         """
         mesh = cls()
 
-        mesh.vertices = [
-            Vertex(id=i, x=xy[0], y=xy[1])
-            for i, xy in enumerate(vertices_xy)
-        ]
+        mesh.vertices = [Vertex(id=i, x=xy[0], y=xy[1]) for i, xy in enumerate(vertices_xy)]
 
         edge_map: dict[tuple[int, int], HalfEdge] = {}
         undirected_counts: dict[tuple[int, int], int] = {}
@@ -143,9 +165,7 @@ class Mesh:
 
         for face_id, face_vertex_ids in enumerate(face_indices):
             if len(face_vertex_ids) < 3:
-                raise ValueError(
-                    f"Face {face_id} has fewer than 3 vertices: {face_vertex_ids}"
-                )
+                raise ValueError(f"Face {face_id} has fewer than 3 vertices: {face_vertex_ids}")
 
             n = len(face_vertex_ids)
 
@@ -153,9 +173,7 @@ class Mesh:
                 a = face_vertex_ids[i]
                 b = face_vertex_ids[(i + 1) % n]
                 if a == b:
-                    raise ValueError(
-                        f"Face {face_id} has repeated consecutive vertex {a}"
-                    )
+                    raise ValueError(f"Face {face_id} has repeated consecutive vertex {a}")
 
             face = Face(id=face_id)
             mesh.faces.append(face)
@@ -164,9 +182,7 @@ class Mesh:
 
             for vid in face_vertex_ids:
                 if vid < 0 or vid >= len(mesh.vertices):
-                    raise ValueError(
-                        f"Face {face_id} references invalid vertex index {vid}"
-                    )
+                    raise ValueError(f"Face {face_id} references invalid vertex index {vid}")
 
                 he = HalfEdge(
                     id=halfedge_id,
@@ -203,9 +219,7 @@ class Mesh:
                 if reverse in edge_map:
                     twin = edge_map[reverse]
                     if twin.twin is not None:
-                        raise ValueError(
-                            f"Non-manifold edge detected on undirected edge {undirected}"
-                        )
+                        raise ValueError(f"Non-manifold edge detected on undirected edge {undirected}")
                     he.twin = twin
                     twin.twin = he
 
@@ -213,9 +227,7 @@ class Mesh:
                 undirected_counts[undirected] = undirected_counts.get(undirected, 0) + 1
 
                 if undirected_counts[undirected] > 2:
-                    raise ValueError(
-                        f"Non-manifold edge detected on undirected edge {undirected}"
-                    )
+                    raise ValueError(f"Non-manifold edge detected on undirected edge {undirected}")
 
         return mesh
 
@@ -242,7 +254,6 @@ class Mesh:
             edges.append((he.origin.id, he.dest.id))
         return edges
 
-
     def face_vertex_lists(self) -> list[list[int]]:
         return [face.vertex_ids() for face in self.faces]
 
@@ -267,15 +278,12 @@ class Mesh:
         while candidate.twin is not None:
             candidate = candidate.twin.next
             if candidate is None:
-                raise ValueError(
-                    "Encountered broken topology while tracing boundary successor"
-                )
+                raise ValueError("Encountered broken topology while tracing boundary successor")
 
             guard += 1
             if guard > max_steps:
                 raise ValueError(
-                    f"Boundary successor walk exceeded {max_steps} steps. "
-                    "Topology is likely inconsistent."
+                    f"Boundary successor walk exceeded {max_steps} steps. " "Topology is likely inconsistent."
                 )
 
         return candidate
@@ -300,15 +308,14 @@ class Mesh:
             guard += 1
             if guard > max_steps:
                 raise ValueError(
-                    f"Boundary loop tracing exceeded {max_steps} steps. "
-                    "Topology is likely inconsistent."
+                    f"Boundary loop tracing exceeded {max_steps} steps. " "Topology is likely inconsistent."
                 )
 
             if current is start_he:
                 break
 
         return loop
-    
+
     def trace_boundary_loops_halfedges(self) -> list[list[HalfEdge]]:
         """
         Trace all boundary loops as lists of halfedges.
@@ -358,7 +365,6 @@ class Mesh:
 
         return area * 0.5
 
-
     def classify_boundary_loops(self):
         """
         Classify boundary loops into outer loops and holes.
@@ -386,6 +392,80 @@ class Mesh:
 
         return outer_loops, hole_loops
 
+    def num_vertices(self) -> int:
+        return len(self.vertices)
+
+    def num_faces(self) -> int:
+        return len(self.faces)
+
+    def num_edges(self) -> int:
+        """
+        Count undirected edges.
+        """
+        edges = set()
+
+        for he in self.halfedges:
+            if he.dest is None:
+                raise ValueError(f"Halfedge {he.id} has no destination")
+            a = he.origin.id
+            b = he.dest.id
+            edges.add((a, b) if a < b else (b, a))
+
+        return len(edges)
+
+    def euler_characteristic(self) -> int:
+        return self.num_vertices() - self.num_edges() + self.num_faces()
+
+    def _face_signed_area(self, face: Face) -> float:
+        halfedges = list(face.iter_halfedges())
+        area = 0.0
+
+        for he in halfedges:
+            x0, y0 = he.origin.xy
+            x1, y1 = he.dest.xy
+            area += x0 * y1 - x1 * y0
+
+        return 0.5 * area
+
+    def _face_connected_components(self) -> list[list[int]]:
+        """
+        Connected components over faces via twin-adjacency.
+        Returns lists of face ids.
+        """
+        face_to_neighbors: dict[int, set[int]] = {face.id: set() for face in self.faces}
+
+        for he in self.halfedges:
+            if he.face is None or he.twin is None or he.twin.face is None:
+                continue
+            if he.face.id != he.twin.face.id:
+                face_to_neighbors[he.face.id].add(he.twin.face.id)
+
+        visited: set[int] = set()
+        components: list[list[int]] = []
+
+        for face in self.faces:
+            if face.id in visited:
+                continue
+
+            stack = [face.id]
+            comp: list[int] = []
+
+            while stack:
+                fid = stack.pop()
+                if fid in visited:
+                    continue
+
+                visited.add(fid)
+                comp.append(fid)
+
+                for nbr in face_to_neighbors[fid]:
+                    if nbr not in visited:
+                        stack.append(nbr)
+
+            components.append(comp)
+
+        return components
+
     def summary(self) -> str:
         num_boundary_halfedges = len(self.boundary_halfedges())
         num_interior_halfedges = len(self.interior_halfedges())
@@ -398,4 +478,245 @@ class Mesh:
             f"  boundary_halfedges={num_boundary_halfedges},\n"
             f"  interior_halfedges={num_interior_halfedges}\n"
             f")"
+        )
+
+    def validate_topology(self, strict: bool = True) -> TopologyReport:
+        errors: list[str] = []
+        warnings: list[str] = []
+
+        # -------------------------------------------------
+        # Basic entity counts
+        # -------------------------------------------------
+        num_vertices = len(self.vertices)
+        num_halfedges = len(self.halfedges)
+        num_faces = len(self.faces)
+
+        # -------------------------------------------------
+        # Halfedge pointer consistency
+        # -------------------------------------------------
+        for he in self.halfedges:
+            if he.origin is None:
+                errors.append(f"Halfedge {he.id} has no origin")
+
+            if he.next is None:
+                errors.append(f"Halfedge {he.id} has no next pointer")
+
+            if he.prev is None:
+                errors.append(f"Halfedge {he.id} has no prev pointer")
+
+            if he.face is None:
+                errors.append(f"Halfedge {he.id} has no face")
+
+            if he.next is not None and he.next.prev is not he:
+                errors.append(f"Halfedge {he.id} violates next/prev consistency with halfedge {he.next.id}")
+
+            if he.prev is not None and he.prev.next is not he:
+                errors.append(f"Halfedge {he.id} violates prev/next consistency with halfedge {he.prev.id}")
+
+            if he.twin is not None and he.twin.twin is not he:
+                errors.append(f"Halfedge {he.id} violates twin symmetry with halfedge {he.twin.id}")
+
+            if he.dest is None:
+                errors.append(f"Halfedge {he.id} has no destination")
+
+            if he.dest is not None and he.origin.id == he.dest.id:
+                errors.append(f"Halfedge {he.id} is degenerate ({he.origin.id} -> {he.dest.id})")
+
+        # -------------------------------------------------
+        # Face cycle consistency
+        # -------------------------------------------------
+        seen_face_ids = set()
+
+        for face in self.faces:
+            if face.id in seen_face_ids:
+                errors.append(f"Duplicate face id detected: {face.id}")
+            seen_face_ids.add(face.id)
+
+            if face.halfedge is None:
+                errors.append(f"Face {face.id} has no representative halfedge")
+                continue
+
+            loop = list(face.iter_halfedges())
+
+            if len(loop) < 3:
+                errors.append(f"Face {face.id} has fewer than 3 halfedges")
+
+            seen_in_loop = set()
+            for he in loop:
+                if he.id in seen_in_loop:
+                    errors.append(f"Face {face.id} repeats halfedge {he.id} in its cycle")
+                seen_in_loop.add(he.id)
+
+                if he.face is not face:
+                    errors.append(
+                        f"Face {face.id} cycle includes halfedge {he.id} belonging to face "
+                        f"{he.face.id if he.face else None}"
+                    )
+
+            area = self._face_signed_area(face) if len(loop) >= 3 else 0.0
+            if area == 0.0:
+                errors.append(f"Face {face.id} has zero signed area")
+            elif area < 0:
+                warnings.append(f"Face {face.id} has negative signed area (clockwise winding)")
+
+        # -------------------------------------------------
+        # Duplicate face detection (by cyclic vertex set/order normalized)
+        # -------------------------------------------------
+        normalized_faces: set[tuple[int, ...]] = set()
+
+        for face in self.faces:
+            vids = face.vertex_ids()
+
+            if len(vids) >= 3:
+                rotations = [tuple(vids[i:] + vids[:i]) for i in range(len(vids))]
+                rev = list(reversed(vids))
+                rev_rotations = [tuple(rev[i:] + rev[:i]) for i in range(len(rev))]
+                canonical = min(rotations + rev_rotations)
+
+                if canonical in normalized_faces:
+                    errors.append(f"Duplicate face detected with vertices {vids}")
+                normalized_faces.add(canonical)
+
+        # -------------------------------------------------
+        # Edge statistics
+        # -------------------------------------------------
+        undirected_edges: dict[tuple[int, int], list[int]] = {}
+
+        for he in self.halfedges:
+            if he.dest is None:
+                continue
+
+            a = he.origin.id
+            b = he.dest.id
+            key = (a, b) if a < b else (b, a)
+            undirected_edges.setdefault(key, []).append(he.id)
+
+        nonmanifold_edges = []
+        boundary_edge_count = 0
+        interior_edge_count = 0
+
+        for key, he_ids in undirected_edges.items():
+            n = len(he_ids)
+            if n == 1:
+                boundary_edge_count += 1
+            elif n == 2:
+                interior_edge_count += 1
+            else:
+                nonmanifold_edges.append((key, he_ids))
+
+        for key, he_ids in nonmanifold_edges:
+            errors.append(f"Non-manifold undirected edge {key} used by halfedges {he_ids}")
+
+        # -------------------------------------------------
+        # Boundary loop tracing and classification
+        # -------------------------------------------------
+        loops_halfedges: list[list[HalfEdge]] = []
+        outer_loops: list[list[int]] = []
+        hole_loops: list[list[int]] = []
+
+        try:
+            loops_halfedges = self.trace_boundary_loops_halfedges()
+
+            visited_boundary = {he.id for loop in loops_halfedges for he in loop}
+            actual_boundary = {he.id for he in self.boundary_halfedges()}
+
+            if visited_boundary != actual_boundary:
+                missing = sorted(actual_boundary - visited_boundary)
+                extra = sorted(visited_boundary - actual_boundary)
+
+                if missing:
+                    errors.append(f"Boundary tracing missed boundary halfedges: {missing}")
+                if extra:
+                    errors.append(f"Boundary tracing visited non-boundary halfedges: {extra}")
+
+            outer_loops, hole_loops = self.classify_boundary_loops()
+
+            for i, loop in enumerate(loops_halfedges):
+                area = self._boundary_loop_signed_area(loop)
+                if area == 0.0:
+                    errors.append(f"Boundary loop {i} has zero signed area")
+
+        except Exception as exc:
+            errors.append(f"Boundary loop tracing failed: {exc}")
+
+        # -------------------------------------------------
+        # Connected components of faces
+        # -------------------------------------------------
+        components: list[list[int]] = []
+        try:
+            components = self._face_connected_components()
+        except Exception as exc:
+            errors.append(f"Connected component computation failed: {exc}")
+
+        if components and len(components) > 1:
+            warnings.append(f"Mesh has {len(components)} face-connected components")
+
+        # -------------------------------------------------
+        # Euler consistency with hole count
+        # For a planar connected region with h holes:
+        # chi = 1 - h
+        # More generally with c connected planar components:
+        # chi = c - h
+        # -------------------------------------------------
+        euler = None
+        num_edges = None
+
+        try:
+            num_edges = self.num_edges()
+            euler = self.euler_characteristic()
+
+            if components and loops_halfedges:
+                c = len(components)
+                h = len(hole_loops)
+                expected_euler = c - h
+
+                if euler != expected_euler:
+                    errors.append(
+                        f"Euler mismatch: chi={euler}, but connected-components minus holes "
+                        f"gives {c} - {h} = {expected_euler}"
+                    )
+
+            if len(outer_loops) == 0 and len(self.boundary_halfedges()) > 0:
+                errors.append("No outer boundary loop detected despite boundary edges existing")
+
+            if strict and len(outer_loops) > len(components) and components:
+                errors.append(
+                    f"Detected {len(outer_loops)} outer loops but only {len(components)} " f"face-connected components"
+                )
+
+        except Exception as exc:
+            errors.append(f"Euler/statistics computation failed: {exc}")
+
+        # -------------------------------------------------
+        # Vertex outgoing halfedge sanity
+        # -------------------------------------------------
+        for v in self.vertices:
+            if v.halfedge is None:
+                warnings.append(f"Vertex {v.id} has no representative halfedge")
+            elif v.halfedge.origin is not v:
+                errors.append(
+                    f"Vertex {v.id} representative halfedge {v.halfedge.id} " f"does not originate from that vertex"
+                )
+
+        stats = {
+            "num_vertices": num_vertices,
+            "num_halfedges": num_halfedges,
+            "num_edges": num_edges,
+            "num_faces": num_faces,
+            "num_boundary_halfedges": len(self.boundary_halfedges()),
+            "num_boundary_loops": len(loops_halfedges),
+            "num_outer_loops": len(outer_loops),
+            "num_hole_loops": len(hole_loops),
+            "num_face_components": len(components),
+            "euler_characteristic": euler,
+            "boundary_edge_count": boundary_edge_count,
+            "interior_edge_count": interior_edge_count,
+        }
+
+        is_valid = len(errors) == 0
+        return TopologyReport(
+            is_valid=is_valid,
+            errors=errors,
+            warnings=warnings,
+            stats=stats,
         )
