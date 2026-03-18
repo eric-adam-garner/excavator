@@ -1,0 +1,44 @@
+{
+    "recommendations": [
+        // --- Python core ---
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-python.black-formatter",
+        "ms-python.mypy-type-checker",
+
+        // --- Modern linting (replaces flake8 + pylint) ---
+        "charliermarsh.ruff",
+
+        // --- Jupyter / scientific ---
+        "ms-toolsai.jupyter",
+
+        // --- Remote / containers / embedded workflows ---
+        "ms-vscode-remote.vscode-remote-extensionpack",
+
+        // --- Collaboration ---
+        "ms-vsliveshare.vsliveshare",
+
+        // --- Markup / documentation / diagrams ---
+        "yzhang.markdown-all-in-one",
+        "bierner.markdown-mermaid",
+        "tamasfe.even-better-toml",
+        "redhat.vscode-yaml",
+        "samuelcolvin.jinjahtml",
+
+        // --- Dev tooling ---
+        "skellock.just",
+        "eamodio.gitlens",
+        "github.vscode-github-actions",
+        "christian-kohler.path-intellisense",
+
+        // --- Containers / infra ---
+        "ms-azuretools.vscode-docker",
+
+        // --- UI / UX ---
+        "PKief.material-icon-theme",
+        "mushan.vscode-paste-image",
+
+        // --- Testing ergonomics ---
+        "nickmillerdev.pytest-fixtures"
+    ]
+}
