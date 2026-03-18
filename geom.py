@@ -242,11 +242,106 @@ class Mesh:
             edges.append((he.origin.id, he.dest.id))
         return edges
 
+
     def face_vertex_lists(self) -> list[list[int]]:
-        """
-        Return each face as a vertex-id list.
-        """
         return [face.vertex_ids() for face in self.faces]
+
+    def boundary_successor(self, he: HalfEdge) -> HalfEdge:
+        """
+        Return the next boundary halfedge along the same boundary loop.
+
+        This assumes `he` is a boundary halfedge. The successor is found by
+        rotating around the destination vertex until the next boundary halfedge
+        is reached.
+        """
+        if not he.is_boundary:
+            raise ValueError(f"Halfedge {he.id} is not a boundary halfedge")
+
+        candidate = he.next
+        if candidate is None:
+            raise ValueError(f"Halfedge {he.id} has no next pointer")
+
+        guard = 0
+        max_steps = max(1, len(self.halfedges))
+
+        while candidate.twin is not None:
+            candidate = candidate.twin.next
+            if candidate is None:
+                raise ValueError(
+                    "Encountered broken topology while tracing boundary successor"
+                )
+
+            guard += 1
+            if guard > max_steps:
+                raise ValueError(
+                    f"Boundary successor walk exceeded {max_steps} steps. "
+                    "Topology is likely inconsistent."
+                )
+
+        return candidate
+
+    def trace_boundary_loop_halfedges(self, start_he: HalfEdge) -> list[HalfEdge]:
+        """
+        Trace one complete boundary loop starting from a boundary halfedge.
+        """
+        if not start_he.is_boundary:
+            raise ValueError(f"Halfedge {start_he.id} is not a boundary halfedge")
+
+        loop: list[HalfEdge] = []
+        current = start_he
+
+        guard = 0
+        max_steps = max(1, len(self.halfedges) + 1)
+
+        while True:
+            loop.append(current)
+            current = self.boundary_successor(current)
+
+            guard += 1
+            if guard > max_steps:
+                raise ValueError(
+                    f"Boundary loop tracing exceeded {max_steps} steps. "
+                    "Topology is likely inconsistent."
+                )
+
+            if current is start_he:
+                break
+
+        return loop
+    
+    def trace_boundary_loops_halfedges(self) -> list[list[HalfEdge]]:
+        """
+        Trace all boundary loops as lists of halfedges.
+        """
+        loops: list[list[HalfEdge]] = []
+        visited: set[int] = set()
+
+        for he in self.boundary_halfedges():
+            if he.id in visited:
+                continue
+
+            loop = self.trace_boundary_loop_halfedges(he)
+            loops.append(loop)
+
+            for loop_he in loop:
+                visited.add(loop_he.id)
+
+        return loops
+
+    def trace_boundary_loops_vertex_ids(self) -> list[list[int]]:
+        """
+        Trace all boundary loops as ordered lists of vertex ids.
+        """
+        loops_halfedges = self.trace_boundary_loops_halfedges()
+        return [[he.origin.id for he in loop] for loop in loops_halfedges]
+
+    def trace_boundary_loops_coords(self) -> list[list[tuple[float, float]]]:
+        """
+        Trace all boundary loops as ordered lists of vertex coordinates.
+        """
+        loops_halfedges = self.trace_boundary_loops_halfedges()
+        return [[he.origin.xy for he in loop] for loop in loops_halfedges]
+
 
     def summary(self) -> str:
         num_boundary_halfedges = len(self.boundary_halfedges())
