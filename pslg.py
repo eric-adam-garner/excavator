@@ -1,11 +1,15 @@
 from __future__ import annotations
-from dataclasses import dataclass, field
-import math
 
+import math
+from dataclasses import (
+    dataclass,
+    field,
+)
 
 # ============================================================
 # REPORT TYPES
 # ============================================================
+
 
 @dataclass
 class PSLGReport:
@@ -24,9 +28,31 @@ class PSLGLoopReport:
     cw_loops: list[list[int]]
 
 
+@dataclass
+class PSLGNestingReport:
+    loops: list[list[int]]
+    loop_areas: list[float]
+    parents: list[int | None]
+    children: dict[int, list[int]]
+    depths: list[int]
+    outer_loops: list[list[int]]
+    hole_loops: list[list[int]]
+
+    def __repr__(self) -> str:
+        return (
+            "PSLGNestingReport(\n"
+            f"  parents={self.parents},\n"
+            f"  depths={self.depths},\n"
+            f"  outer_loops={self.outer_loops},\n"
+            f"  hole_loops={self.hole_loops}\n"
+            ")"
+        )
+
+
 # ============================================================
 # PRIMITIVES
 # ============================================================
+
 
 @dataclass
 class PSLGVertex:
@@ -52,6 +78,7 @@ class PSLGSegment:
 # ============================================================
 # PSLG
 # ============================================================
+
 
 @dataclass
 class PSLG:
@@ -100,7 +127,7 @@ class PSLG:
     # --------------------------------------------------------
 
     def _orient(self, a, b, c):
-        return (b[0]-a[0])*(c[1]-a[1]) - (b[1]-a[1])*(c[0]-a[0])
+        return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
 
     def _orient_sign(self, a, b, c):
         v = self._orient(a, b, c)
@@ -124,8 +151,8 @@ class PSLG:
         return hi - lo
 
     def _colinear_overlap(self, a, b, c, d):
-        dx = abs(b[0]-a[0])
-        dy = abs(b[1]-a[1])
+        dx = abs(b[0] - a[0])
+        dy = abs(b[1] - a[1])
         if dx >= dy:
             overlap = self._interval_overlap(a[0], b[0], c[0], d[0])
         else:
@@ -138,25 +165,97 @@ class PSLG:
         return "overlap"
 
     def _point_on_segment_interior(self, p, a, b):
-        abx = b[0]-a[0]
-        aby = b[1]-a[1]
-        apx = p[0]-a[0]
-        apy = p[1]-a[1]
+        abx = b[0] - a[0]
+        aby = b[1] - a[1]
+        apx = p[0] - a[0]
+        apy = p[1] - a[1]
 
-        ab_len = abx*abx + aby*aby
+        ab_len = abx * abx + aby * aby
         if ab_len <= self.tol:
             return False
 
-        cross = abx*apy - aby*apx
+        cross = abx * apy - aby * apx
         if abs(cross) > self.tol * math.sqrt(ab_len):
             return False
 
-        t = (apx*abx + apy*aby)/ab_len
+        t = (apx * abx + apy * aby) / ab_len
         return self.tol < t < 1 - self.tol
 
-    # --------------------------------------------------------
-    # INTERSECTION DETECTION
-    # --------------------------------------------------------
+    def _loop_coords_from_vertex_ids(self, vids: list[int]) -> list[tuple[float, float]]:
+        return [self.vertices[vid].xy for vid in vids]
+
+    def _point_in_polygon(self, p: tuple[float, float], poly: list[tuple[float, float]]) -> bool:
+        """
+        Ray casting test.
+        Returns True for strictly interior points.
+        Boundary handling is intentionally conservative and should be avoided
+        by using a non-boundary probe point.
+        """
+        x, y = p
+        inside = False
+        n = len(poly)
+
+        for i in range(n):
+            x0, y0 = poly[i]
+            x1, y1 = poly[(i + 1) % n]
+
+            intersects = (y0 > y) != (y1 > y)
+            if intersects:
+                x_cross = x0 + (y - y0) * (x1 - x0) / (y1 - y0)
+                if x < x_cross:
+                    inside = not inside
+
+        return inside
+
+    def _loop_centroid(self, vids: list[int]) -> tuple[float, float]:
+        pts = self._loop_coords_from_vertex_ids(vids)
+        cx = sum(x for x, _ in pts) / len(pts)
+        cy = sum(y for _, y in pts) / len(pts)
+        return (cx, cy)
+
+    def _loop_probe_point(self, vids: list[int]) -> tuple[float, float]:
+        """
+        Return a point guaranteed (heuristically) to lie inside the loop.
+
+        Strategy:
+            Take first edge, move slightly inward using orientation.
+        """
+        if len(vids) < 3:
+            return self.vertices[vids[0]].xy
+
+        v0 = self.vertices[vids[0]]
+        v1 = self.vertices[vids[1]]
+        v2 = self.vertices[vids[2]]
+
+        x0, y0 = v0.xy
+        x1, y1 = v1.xy
+        x2, y2 = v2.xy
+
+        # edge vector
+        ex = x1 - x0
+        ey = y1 - y0
+
+        # signed area to determine orientation
+        area = self._orient((x0, y0), (x1, y1), (x2, y2))
+
+        # inward normal depends on orientation
+        if area > 0:  # CCW
+            nx = -ey
+            ny = ex
+        else:  # CW
+            nx = ey
+            ny = -ex
+
+        length = math.hypot(nx, ny)
+        if length == 0:
+            return (x0, y0)
+
+        nx /= length
+        ny /= length
+
+        eps = self.tol * 10
+
+        return (x0 + nx * eps, y0 + ny * eps)
 
     def find_segment_intersections(self):
         issues = []
@@ -167,7 +266,7 @@ class PSLG:
             a = self.vertices[s1.v0].xy
             b = self.vertices[s1.v1].xy
 
-            for j in range(i+1, n):
+            for j in range(i + 1, n):
                 s2 = self.segments[j]
                 c = self.vertices[s2.v0].xy
                 d = self.vertices[s2.v1].xy
@@ -195,9 +294,7 @@ class PSLG:
                 b = self.vertices[s.v1].xy
 
                 if self._point_on_segment_interior(p, a, b):
-                    issues.append(
-                        {"type": "vertex_on_segment", "vertex": v.id, "segment": s.id}
-                    )
+                    issues.append({"type": "vertex_on_segment", "vertex": v.id, "segment": s.id})
         return issues
 
     # --------------------------------------------------------
@@ -216,7 +313,7 @@ class PSLG:
         n = len(vids)
         for i in range(n):
             v0 = self.vertices[vids[i]]
-            v1 = self.vertices[vids[(i+1)%n]]
+            v1 = self.vertices[vids[(i + 1) % n]]
             area += v0.x * v1.y - v1.x * v0.y
         return 0.5 * area
 
@@ -235,11 +332,7 @@ class PSLG:
             cur = nxt
 
             while True:
-                candidates = [
-                    (nbr, sid2)
-                    for nbr, sid2 in adj[cur]
-                    if sid2 in unused and nbr != prev
-                ]
+                candidates = [(nbr, sid2) for nbr, sid2 in adj[cur] if sid2 in unused and nbr != prev]
                 if not candidates:
                     break
                 nbr, sid2 = candidates[0]
@@ -261,10 +354,109 @@ class PSLG:
                 open_chains.append(chain)
 
         areas = [self._loop_signed_area(l) for l in loops]
-        ccw = [l for l,a in zip(loops, areas) if a > 0]
-        cw = [l for l,a in zip(loops, areas) if a <= 0]
+        ccw = [l for l, a in zip(loops, areas) if a > 0]
+        cw = [l for l, a in zip(loops, areas) if a <= 0]
 
         return PSLGLoopReport(loops, open_chains, areas, ccw, cw)
+
+    def classify_loops(self) -> PSLGNestingReport:
+        """
+        Classify extracted loops by nesting depth.
+
+        Returns:
+            PSLGNestingReport
+
+        Interpretation:
+            depth 0 -> outer
+            depth 1 -> hole
+            depth 2 -> island inside hole
+            depth 3 -> hole inside island
+            etc.
+
+        For standard polygon-with-holes domains, you typically want:
+            - one or more depth-0 loops
+            - any depth-1 loops as holes
+            - no deeper nesting unless explicitly supported
+        """
+        loop_report = self.extract_loops()
+        loops = loop_report.loops
+        loop_areas = loop_report.loop_areas
+
+        n = len(loops)
+        polys = [self._loop_coords_from_vertex_ids(loop) for loop in loops]
+        probes = [self._loop_probe_point(loop) for loop in loops]
+
+        parents: list[int | None] = [None] * n
+
+        # -------------------------------------------------
+        # Parent = smallest containing loop
+        # -------------------------------------------------
+        for i in range(n):
+            containing = []
+
+            for j in range(n):
+                if i == j:
+                    continue
+
+                if self._point_in_polygon(probes[i], polys[j]):
+                    area_j = abs(loop_areas[j])
+                    containing.append((area_j, j))
+
+            if containing:
+                containing.sort(key=lambda t: t[0])
+                parents[i] = containing[0][1]
+
+        # -------------------------------------------------
+        # Children map
+        # -------------------------------------------------
+        children: dict[int, list[int]] = {i: [] for i in range(n)}
+        for i, parent in enumerate(parents):
+            if parent is not None:
+                children[parent].append(i)
+
+        # -------------------------------------------------
+        # Depths
+        # -------------------------------------------------
+        depths: list[int] = [0] * n
+        visiting: set[int] = set()
+        computed: dict[int, int] = {}
+        cyclic_nodes: set[int] = set()
+
+        def compute_depth(i: int) -> int:
+            if i in computed:
+                return computed[i]
+
+            if i in visiting:
+                cyclic_nodes.add(i)
+                return 0
+
+            visiting.add(i)
+
+            parent = parents[i]
+            if parent is None:
+                depth = 0
+            else:
+                depth = compute_depth(parent) + 1
+
+            visiting.remove(i)
+            computed[i] = depth
+            return depth
+
+        for i in range(n):
+            depths[i] = compute_depth(i)
+
+        outer_loops = [loops[i] for i in range(n) if depths[i] % 2 == 0]
+        hole_loops = [loops[i] for i in range(n) if depths[i] % 2 == 1]
+
+        return PSLGNestingReport(
+            loops=loops,
+            loop_areas=loop_areas,
+            parents=parents,
+            children=children,
+            depths=depths,
+            outer_loops=outer_loops,
+            hole_loops=hole_loops,
+        )
 
     # --------------------------------------------------------
     # VALIDATION
@@ -277,6 +469,12 @@ class PSLG:
         inter = self.find_segment_intersections()
         v_on_seg = self.find_vertices_on_segments()
         loops = self.extract_loops()
+        nesting = self.classify_loops()
+
+        max_depth = max(nesting.depths, default=0)
+
+        if max_depth > 1:
+            warnings.append(f"PSLG has nested depth {max_depth}; deeper-than-hole nesting is present")
 
         if inter:
             for i in inter:
@@ -294,6 +492,12 @@ class PSLG:
             "num_segments": len(self.segments),
             "num_loops": len(loops.loops),
             "num_open_chains": len(loops.open_chains),
+            "num_outer_loops": len(nesting.outer_loops),
+            "num_hole_loops": len(nesting.hole_loops),
+            "loop_depths": nesting.depths,
+            "loop_parents": nesting.parents,
+            "outer_loops": nesting.outer_loops,
+            "hole_loops": nesting.hole_loops,
         }
 
-        return PSLGReport(len(errors)==0, errors, warnings, stats)
+        return PSLGReport(len(errors) == 0, errors, warnings, stats)
