@@ -174,6 +174,63 @@ class PSLG:
 
         return "overlap"
 
+    def _point_distance_sq(self, p, q):
+        dx = p[0] - q[0]
+        dy = p[1] - q[1]
+        return dx * dx + dy * dy
+
+    def _point_on_segment(self, p, a, b):
+        """
+        Return True if point p lies on segment ab within tolerance.
+        Includes endpoints.
+        """
+        ax, ay = a
+        bx, by = b
+        px, py = p
+
+        abx = bx - ax
+        aby = by - ay
+        apx = px - ax
+        apy = py - ay
+
+        ab_len_sq = abx * abx + aby * aby
+        if ab_len_sq <= self.tol * self.tol:
+            return False
+
+        # Perpendicular distance via cross product magnitude
+        cross = abx * apy - aby * apx
+        if abs(cross) > self.tol * math.sqrt(ab_len_sq):
+            return False
+
+        # Parametric coordinate on line
+        t = (apx * abx + apy * aby) / ab_len_sq
+        return -self.tol <= t <= 1.0 + self.tol
+
+    def _point_on_segment_interior(self, p, a, b):
+        """
+        Return True if point p lies strictly in the interior of segment ab
+        within tolerance, excluding endpoints.
+        """
+        ax, ay = a
+        bx, by = b
+        px, py = p
+
+        abx = bx - ax
+        aby = by - ay
+        apx = px - ax
+        apy = py - ay
+
+        ab_len_sq = abx * abx + aby * aby
+        if ab_len_sq <= self.tol * self.tol:
+            return False
+
+        cross = abx * apy - aby * apx
+        if abs(cross) > self.tol * math.sqrt(ab_len_sq):
+            return False
+
+        t = (apx * abx + apy * aby) / ab_len_sq
+        return self.tol < t < 1.0 - self.tol
+
     def find_segment_intersections(self):
 
         issues = []
@@ -216,5 +273,65 @@ class PSLG:
 
         return issues
 
+    def find_vertices_on_segments(self):
+        """
+        Detect vertices that lie on the interior of segments that do not
+        explicitly use that vertex.
+
+        Returns a list of diagnostics:
+        {
+            "type": "vertex_on_segment",
+            "vertex": vertex_id,
+            "segment": segment_id,
+        }
+        """
+        issues = []
+
+        for v in self.vertices:
+            p = v.xy
+
+            for s in self.segments:
+                if v.id == s.v0 or v.id == s.v1:
+                    continue
+
+                a = self.vertices[s.v0].xy
+                b = self.vertices[s.v1].xy
+
+                if self._point_on_segment_interior(p, a, b):
+                    issues.append(
+                        {
+                            "type": "vertex_on_segment",
+                            "vertex": v.id,
+                            "segment": s.id,
+                        }
+                    )
+
+        return issues
+
     def summary(self):
         return f"PSLG(\n" f"  vertices={self.num_vertices()},\n" f"  segments={self.num_segments()}\n" f")"
+
+pslg = PSLG()
+
+a = pslg.add_vertex(0, 0)
+b = pslg.add_vertex(4, 0)
+c = pslg.add_vertex(2, 0)
+d = pslg.add_vertex(2, 3)
+
+pslg.add_segment(a, b)
+pslg.add_segment(c, d)
+
+print(pslg.find_segment_intersections())
+print(pslg.find_vertices_on_segments())
+
+pslg = PSLG()
+pslg.add_polygon([(0, 0), (4, 0), (4, 4), (0, 4)])
+
+print(pslg.find_vertices_on_segments())
+
+pslg = PSLG()
+
+pslg.add_polygon([(0, 0), (4, 0), (4, 4), (0, 4)])
+v = pslg.add_vertex(2, 0)
+
+print(pslg.find_vertices_on_segments())
