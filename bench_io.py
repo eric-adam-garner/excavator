@@ -1,9 +1,25 @@
 import json
+from dataclasses import dataclass
 
-from models import Bench
+
+@dataclass
+class BenchPolyline:
+    id: str
+    points3d: list[tuple[float, float, float]]
+
+    def to_2d(self):
+        return [(x, y) for x, y, _ in self.points3d]
 
 
-def load_benches(filepath):
-    with open(filepath, "r") as f:
+def load_benches_json(path: str) -> list[BenchPolyline]:
+    with open(path) as f:
         data = json.load(f)
-    return[Bench.from_json(bench) for bench in data["benches"]]
+
+    benches = []
+
+    for b in data["benches"]:
+        pts = b["polyline"]["points"]
+        points3d = [(p["x"], p["y"], p["z"]) for p in pts]
+        benches.append(BenchPolyline(b["id"], points3d))
+
+    return benches

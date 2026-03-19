@@ -111,8 +111,25 @@ class PSLG:
     # --------------------------------------------------------
 
     def add_segment(self, v0, v1):
+        """
+        Add segment if it is non‑degenerate.
+
+        Degenerate segments can arise after:
+            - vertex snapping
+            - segment splitting
+            - duplicate polyline points
+        """
         if v0 == v1:
-            raise ValueError("degenerate segment")
+            return None
+
+        # also guard against zero-length in geometry space
+        a = self.vertices[v0]
+        b = self.vertices[v1]
+        dx = a.x - b.x
+        dy = a.y - b.y
+        if dx * dx + dy * dy <= self.tol * self.tol:
+            return None
+
         sid = len(self.segments)
         self.segments.append(PSLGSegment(sid, v0, v1))
         return sid

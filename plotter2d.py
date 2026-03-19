@@ -1,5 +1,7 @@
+import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import numpy as np
+import matplotlib.colors as mcolors
 
 
 def plot_mesh(
@@ -151,3 +153,52 @@ def plot_mesh(
 
     ax.set_aspect("equal")
     ax.grid(True, linestyle="--", alpha=0.3)
+
+
+def plot_pslg(pslg, show_vertex_ids=False, show_loop_ids=False):
+    nesting = pslg.classify_loops()
+    depths = nesting.depths
+    loops = nesting.loops
+
+    cmap = cm.get_cmap("tab10")
+    norm = mcolors.Normalize(vmin=min(depths) if depths else 0,
+                             vmax=max(depths) if depths else 1)
+    fig, ax = plt.subplots()
+
+    # background segments
+    for s in pslg.segments:
+        v0 = pslg.vertices[s.v0]
+        v1 = pslg.vertices[s.v1]
+        ax.plot([v0.x, v1.x], [v0.y, v1.y], color="lightgray", linewidth=1)
+
+    # loops colored by depth
+    for i, loop in enumerate(loops):
+        xs = []
+        ys = []
+        for vid in loop:
+            v = pslg.vertices[vid]
+            xs.append(v.x)
+            ys.append(v.y)
+
+        xs.append(xs[0])
+        ys.append(ys[0])
+
+        color = cmap(depths[i] % 10)
+        ax.plot(xs, ys, color=color, linewidth=2)
+
+        if show_loop_ids:
+            cx = sum(xs[:-1]) / len(xs[:-1])
+            cy = sum(ys[:-1]) / len(ys[:-1])
+            ax.text(cx, cy, f"L{i}", fontsize=10, color=color)
+
+    if show_vertex_ids:
+        for v in pslg.vertices:
+            ax.text(v.x, v.y, str(v.id), fontsize=6)
+
+    ax.set_aspect("equal")
+    ax.set_title("PSLG Visualization")
+    import matplotlib.cm as mcm
+    sm = mcm.ScalarMappable(norm=norm, cmap=cmap)
+    sm.set_array([])
+    fig.colorbar(sm, ax=ax, label="Loop depth")
+    plt.show()
