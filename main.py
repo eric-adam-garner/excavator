@@ -200,21 +200,62 @@ def benches_to_unique_segments(benches, tol=1e-6):
     return segments
 
 
-def benches_to_pslg(benches, tol=1e-6):
-    p = PSLG(tol=tol)
+def benches_to_partition_edges(benches, tol):
+    """
+    Build canonical unique edge set representing the planar partition.
+    Shared boundaries appear exactly once.
+
+    Returns:
+        list[((x0,y0),(x1,y1))]
+    """
 
     polylines = []
     for b in benches:
-        polyline = clean_polyline(b.to_2d(), tol)
-        polylines.append(polyline)
+        poly = clean_polyline(b.to_2d(), tol)
+        if len(poly) >= 2:
+            polylines.append(poly)
 
     polylines = snap_vertices(polylines, tol)
     polylines = split_segments(polylines, tol)
-    # polylines = merge_colinear_segments(polylines, tol) # seems like this destroys the new vertices from split... logically should not be done now...
-    # polylines = deduplicate_segments(polylines, tol)  # this does not seem to behave as described
 
-    for polyline in polylines:
-        p.add_polygon(polyline)
+    # canonical mode keeps one copy of every undirected edge
+    edges = deduplicate_segments(polylines, tol, mode="canonical")
+
+    return edges
+
+
+def benches_to_boundary_pslg(benches, tol):
+    """
+    Build PSLG of the OUTER UNION BOUNDARY only.
+    Shared internal edges are removed.
+
+    Returns:
+        PSLG
+    """
+
+    polylines = []
+    for b in benches:
+        poly = clean_polyline(b.to_2d(), tol)
+        if len(poly) >= 2:
+            polylines.append(poly)
+
+    polylines = snap_vertices(polylines, tol)
+    polylines = split_segments(polylines, tol)
+
+    # boundary mode removes shared partition edges
+    boundary_edges = deduplicate_segments(polylines, tol, mode="boundary")
+
+    # trace loops from boundary edges
+    boundary_faces = extract_faces_from_edges(boundary_edges, tol)
+
+    # filter outer face artifacts
+    boundary_faces = filter_faces(boundary_faces, tol)
+
+    p = PSLG(tol=tol)
+
+    for face in boundary_faces:
+        if len(face) >= 3:
+            p.add_polygon(face)
 
     return p
 
@@ -269,28 +310,20 @@ def filter_faces(faces, tol, min_area=None):
     # remove the outer face = largest absolute area
     idx_outer = max(range(len(candidates)), key=lambda i: abs(candidates[i][1]))
 
-    filtered = [
-        face
-        for i, (face, area) in enumerate(candidates)
-        if i != idx_outer
-    ]
+    filtered = [face for i, (face, area) in enumerate(candidates) if i != idx_outer]
 
     return filtered
+
 
 if __name__ == "__main__":
 
     path = "data/take-home_360.json"
-    benches = load_benches_json(path)[:2]
+    benches = load_benches_json(path)[:10]
     tol = recommend_tol(benches)
     edges = benches_to_unique_segments(benches, tol=tol)
-    
     faces = extract_faces_from_edges(edges, tol)
-    
     faces = filter_faces(faces, tol, min_area=None)
-    print(len(faces))
-    # print(faces)
-    # for face in faces:
-    #     print(len(face))
+
     plot_faces(
         faces,
         show_face_ids=True,
@@ -299,11 +332,11 @@ if __name__ == "__main__":
         alpha=0.35,
     )
 
-    plot_directed_edges(edges, tol, show_ids=True, show_degrees=True)
+    edgees = benches_to_partition_edges(benches, tol)
+    # plot_directed_edges(edges, tol, show_ids=True, show_degrees=True)
 
-    # p = benches_to_pslg(benches, tol=tol)
 
-    # report = p.validate()
-    # print(report)
-
-    # plot_pslg(p, show_vertex_ids=True, show_loop_ids=True, show_segment_ids=True)
+    p = benches_to_boundary_pslg(benches, tol)
+    report = p.validate()
+    print(report)
+    plot_pslg(p, show_vertex_ids=True, show_loop_ids=True, show_segment_ids=True)
