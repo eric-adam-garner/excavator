@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 import numpy as np
 from scipy.spatial import cKDTree
 
@@ -33,7 +35,6 @@ def snap_vertices(polylines, tol):
         snapped.append(new)
 
     return snapped
-
 
 
 def _point_on_segment(p, a, b, tol):
@@ -126,7 +127,6 @@ def split_segments(polylines, tol):
     return new_polys
 
 
-
 def _colinear(a, b, c, tol):
     """
     Return True if a, b, c are colinear within tolerance.
@@ -188,3 +188,78 @@ def merge_colinear_segments(polylines, tol):
         merged.append(pts)
 
     return merged
+
+
+def deduplicate_segments(polylines, tol, mode="canonical"):
+    """
+    Convert polygon soup → canonical global edge set.
+
+    Args:
+        polylines:
+            list[list[(x,y)]], assumed closed loops
+        tol:
+            snapping tolerance
+        mode:
+            "canonical" → keep one copy of every undirected edge
+            "boundary"  → keep only edges with multiplicity == 1
+                          (use when benches form a partition)
+
+    Returns:
+        list[((x0,y0),(x1,y1))] directed edges
+    """
+
+    def is_degenerate(a, b):
+        dx = b[0] - a[0]
+        dy = b[1] - a[1]
+        return dx * dx + dy * dy <= tol * tol
+
+    def qpoint(p):
+        return (round(p[0] / tol), round(p[1] / tol))
+
+    edge_count = defaultdict(int)
+    edge_geom = {}
+
+    # -------------------------
+    # Count undirected edges
+    # -------------------------
+    for poly in polylines:
+        n = len(poly)
+        if n < 2:
+            continue
+
+        for i in range(n):
+            a = poly[i]
+            b = poly[(i + 1) % n]
+
+            if is_degenerate(a, b):
+                continue
+
+            qa = qpoint(a)
+            qb = qpoint(b)
+
+            if qa <= qb:
+                key = (qa, qb)
+                geom = (a, b)
+            else:
+                key = (qb, qa)
+                geom = (b, a)
+
+            edge_count[key] += 1
+            if key not in edge_geom:
+                edge_geom[key] = geom
+
+    # -------------------------
+    # Select edges
+    # -------------------------
+    edges = []
+
+    for key, count in edge_count.items():
+
+        if mode == "boundary":
+            if count != 1:
+                continue
+
+        geom = edge_geom[key]
+        edges.append(geom)
+
+    return edges

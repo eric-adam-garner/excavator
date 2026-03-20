@@ -1,7 +1,9 @@
+from collections import defaultdict
+
 import matplotlib.cm as cm
+import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
-import matplotlib.colors as mcolors
 
 
 def plot_mesh(
@@ -155,14 +157,13 @@ def plot_mesh(
     ax.grid(True, linestyle="--", alpha=0.3)
 
 
-def plot_pslg(pslg, show_vertex_ids=False, show_loop_ids=False):
+def plot_pslg(pslg, show_vertex_ids=False, show_loop_ids=False, show_segment_ids=False):
     nesting = pslg.classify_loops()
     depths = nesting.depths
     loops = nesting.loops
 
     cmap = cm.get_cmap("tab10")
-    norm = mcolors.Normalize(vmin=min(depths) if depths else 0,
-                             vmax=max(depths) if depths else 1)
+    norm = mcolors.Normalize(vmin=min(depths) if depths else 0, vmax=max(depths) if depths else 1)
     fig, ax = plt.subplots()
 
     # background segments
@@ -195,10 +196,161 @@ def plot_pslg(pslg, show_vertex_ids=False, show_loop_ids=False):
         for v in pslg.vertices:
             ax.text(v.x, v.y, str(v.id), fontsize=6)
 
+    if show_segment_ids:
+        for s in pslg.segments:
+            v0 = pslg.vertices[s.v0]
+            v1 = pslg.vertices[s.v1]
+            cx = 0.5 * (v0.x + v1.x)
+            cy = 0.5 * (v0.y + v1.y)
+            ax.text(cx, cy, str(s.id), fontsize=8, color="red")
+
     ax.set_aspect("equal")
     ax.set_title("PSLG Visualization")
     import matplotlib.cm as mcm
+
     sm = mcm.ScalarMappable(norm=norm, cmap=cmap)
     sm.set_array([])
     fig.colorbar(sm, ax=ax, label="Loop depth")
+    plt.show()
+
+
+def plot_directed_edges(edges, tol, show_ids=True, show_degrees=True):
+    """
+    Diagnostic plot for directed edge set.
+
+    edges:
+        list of ((x0,y0),(x1,y1)) directed edges
+    """
+
+    def qpoint(p):
+        return (round(p[0] / tol), round(p[1] / tol))
+
+    fig, ax = plt.subplots()
+
+    # -------------------------
+    # Build adjacency (degree)
+    # -------------------------
+    adj = defaultdict(list)
+
+    for a, b in edges:
+        qa = qpoint(a)
+        qb = qpoint(b)
+        adj[qa].append(qb)
+        adj[qb].append(qa)
+
+    # -------------------------
+    # Plot edges
+    # -------------------------
+    for i, (a, b) in enumerate(edges):
+
+        x0, y0 = a
+        x1, y1 = b
+
+        dx = x1 - x0
+        dy = y1 - y0
+
+        ax.arrow(
+            x0, y0, dx, dy, length_includes_head=True, head_width=0.02 * np.hypot(dx, dy), color="black", alpha=0.7
+        )
+
+        if show_ids:
+            cx = 0.5 * (x0 + x1)
+            cy = 0.5 * (y0 + y1)
+            ax.text(cx, cy, str(i), color="red", fontsize=8)
+
+    # -------------------------
+    # Plot vertex degrees
+    # -------------------------
+    if show_degrees:
+        for q, nbrs in adj.items():
+            x, y = q[0] * tol, q[1] * tol
+            deg = len(nbrs)
+            ax.text(x, y, f"d={deg}", color="blue", fontsize=9)
+
+    ax.set_aspect("equal")
+    ax.set_title("Directed Edge Graph Diagnostic")
+    plt.show()
+
+
+def plot_faces(
+    faces,
+    show_face_ids=True,
+    show_areas=False,
+    show_edges=True,
+    alpha=0.35,
+):
+    """
+    Plot extracted face cycles.
+
+    Args:
+        faces:
+            list of faces, where each face is a list of (x, y) points
+            in traversal order, without repeated last point.
+        show_face_ids:
+            if True, label each face with its index.
+        show_areas:
+            if True, show signed area next to face id.
+        show_edges:
+            if True, draw face boundaries.
+        alpha:
+            fill transparency.
+    """
+
+    def signed_area(loop):
+        area = 0.0
+        n = len(loop)
+        for i in range(n):
+            x0, y0 = loop[i]
+            x1, y1 = loop[(i + 1) % n]
+            area += x0 * y1 - x1 * y0
+        return 0.5 * area
+
+    def centroid(loop):
+        xs = [p[0] for p in loop]
+        ys = [p[1] for p in loop]
+        return (sum(xs) / len(xs), sum(ys) / len(ys))
+
+    fig, ax = plt.subplots()
+    cmap = cm.get_cmap("tab20")
+
+    for i, face in enumerate(faces):
+        if len(face) < 3:
+            continue
+
+        xs = [p[0] for p in face]
+        ys = [p[1] for p in face]
+
+        color = cmap(i % 20)
+
+        ax.fill(xs, ys, color=color, alpha=alpha, zorder=1)
+
+        if show_edges:
+            ax.plot(xs + [xs[0]], ys + [ys[0]], color=color, linewidth=1.5, zorder=2)
+
+        if show_face_ids or show_areas:
+            cx, cy = centroid(face)
+            label = []
+
+            if show_face_ids:
+                label.append(f"F{i}")
+
+            if show_areas:
+                a = signed_area(face)
+                label.append(f"A={a:.3g}")
+
+            ax.text(
+                cx,
+                cy,
+                "\n".join(label),
+                fontsize=9,
+                ha="center",
+                va="center",
+                color="black",
+                bbox=dict(facecolor="white", alpha=0.75, edgecolor="none"),
+                zorder=3,
+            )
+
+    ax.set_aspect("equal")
+    ax.set_title("Extracted Faces")
+    ax.grid(True, linestyle="--", alpha=0.3)
     plt.show()

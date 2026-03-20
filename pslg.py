@@ -536,7 +536,12 @@ class PSLG:
 
         if inter:
             for i in inter:
-                errors.append(f"{i['type']} intersection between segments {i['seg_a']} and {i['seg_b']}")
+                seg_a = self.segments[i['seg_a']]
+                seg_b = self.segments[i['seg_b']]
+                
+                errors.append(
+                    f"{i['type']} intersection between segments {seg_a.id}({seg_a.v0}, {seg_a.v1}) and {seg_b.id}({seg_b.v0}, {seg_b.v1})"
+                )
 
         if v_on_seg:
             for i in v_on_seg:
