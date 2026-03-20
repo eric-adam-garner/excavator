@@ -274,6 +274,7 @@ def plot_directed_edges(edges, tol, show_ids=True, show_degrees=True):
 
 def plot_faces(
     faces,
+    face_ids,
     show_face_ids=True,
     show_areas=False,
     show_edges=True,
@@ -332,7 +333,7 @@ def plot_faces(
             label = []
 
             if show_face_ids:
-                label.append(f"F{i}")
+                label.append(f"F{face_ids[i]}")
 
             if show_areas:
                 a = signed_area(face)

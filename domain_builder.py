@@ -7,7 +7,7 @@ from geometry_reconcile import (
     split_segments,
 )
 from polyline import clean_polyline
-
+from pslg import PSLG
 
 def extract_faces_from_edges(edges, tol):
     """
