@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from collections import defaultdict
 from math import atan2
 
@@ -6,8 +8,78 @@ from geometry_reconcile import (
     snap_vertices,
     split_segments,
 )
+from partition_domain import (
+    PartitionDomain,
+    qpoint,
+)
 from polyline import clean_polyline
 from pslg import PSLG
+
+
+def point_in_polygon(pt, poly):
+    x, y = pt
+    wn = 0
+    n = len(poly)
+
+    for i in range(n):
+        x0, y0 = poly[i]
+        x1, y1 = poly[(i + 1) % n]
+
+        if y0 <= y:
+            if y1 > y and (x1 - x0) * (y - y0) - (x - x0) * (y1 - y0) > 0:
+                wn += 1
+        else:
+            if y1 <= y and (x1 - x0) * (y - y0) - (x - x0) * (y1 - y0) < 0:
+                wn -= 1
+
+    return wn != 0
+
+
+def face_centroid(face):
+    A = 0
+    cx = 0
+    cy = 0
+    n = len(face)
+
+    for i in range(n):
+        x0, y0 = face[i]
+        x1, y1 = face[(i + 1) % n]
+        cross = x0 * y1 - x1 * y0
+        A += cross
+        cx += (x0 + x1) * cross
+        cy += (y0 + y1) * cross
+
+    A *= 0.5
+    if abs(A) < 1e-16:
+        return face[0]
+
+    cx /= 6 * A
+    cy /= 6 * A
+    return (cx, cy)
+
+
+def assign_face_bench_ids(faces, benches, tol):
+
+    bench_polys = [clean_polyline(b.to_2d(), tol) for b in benches]
+
+    face_ids = []
+
+    for face in faces:
+        c = face_centroid(face)
+
+        assigned = None
+        for i, poly in enumerate(bench_polys):
+            if point_in_polygon(c, poly):
+                assigned = benches[i].id
+                break
+
+        if assigned is None:
+            raise RuntimeError("Face could not be assigned to any bench")
+
+        face_ids.append(assigned)
+
+    return face_ids
+
 
 def extract_faces_from_edges(edges, tol):
     """
@@ -231,3 +303,90 @@ def filter_faces(faces, tol, min_area=None):
     filtered = [face for i, (face, area) in enumerate(candidates) if i != idx_outer]
 
     return filtered
+
+
+def build_partition_domain(benches, tol: float) -> PartitionDomain:
+    """
+    Build a canonical partition domain from bench polygons.
+
+    Pipeline:
+        bench polylines
+        -> clean
+        -> snap
+        -> split
+        -> canonical partition edges
+        -> extract faces
+        -> filter valid bounded faces
+        -> assign bench ids
+        -> index vertices / edges / faces
+    """
+    polylines = []
+    for b in benches:
+        poly = clean_polyline(b.to_2d(), tol)
+        if len(poly) >= 2:
+            polylines.append(poly)
+
+    polylines = snap_vertices(polylines, tol)
+    polylines = split_segments(polylines, tol)
+
+    # For planar partition semantics:
+    # keep one copy of every undirected edge.
+    edges_xy = deduplicate_segments(polylines, tol, mode="canonical")
+
+    all_faces_xy = extract_faces_from_edges(edges_xy, tol)
+    faces_xy = filter_faces(all_faces_xy, tol, min_area=None)
+
+    face_bench_ids = assign_face_bench_ids(faces_xy, benches, tol)
+
+    vertex_index: dict[tuple[int, int], int] = {}
+    vertices: list[tuple[float, float]] = []
+
+    def get_vid(p: tuple[float, float]) -> int:
+        key = qpoint(p, tol)
+        if key not in vertex_index:
+            vertex_index[key] = len(vertices)
+            vertices.append(p)
+        return vertex_index[key]
+
+    edges: list[tuple[int, int]] = []
+    seen_edges: set[tuple[int, int]] = set()
+
+    for a, b in edges_xy:
+        ia = get_vid(a)
+        ib = get_vid(b)
+        if ia == ib:
+            continue
+        key = (ia, ib) if ia < ib else (ib, ia)
+        if key in seen_edges:
+            continue
+        seen_edges.add(key)
+        edges.append(key)
+
+    faces: list[list[int]] = []
+    for face in faces_xy:
+        vids = [get_vid(p) for p in face]
+
+        # Drop repeated closing vertex if present.
+        if len(vids) > 1 and vids[0] == vids[-1]:
+            vids = vids[:-1]
+
+        # Defensive cleanup of consecutive duplicates.
+        cleaned_vids = [vids[0]]
+        for v in vids[1:]:
+            if v != cleaned_vids[-1]:
+                cleaned_vids.append(v)
+
+        if len(cleaned_vids) >= 3:
+            faces.append(cleaned_vids)
+
+    if len(faces) != len(face_bench_ids):
+        raise RuntimeError(f"Face count / bench-id count mismatch: {len(faces)} vs {len(face_bench_ids)}")
+
+    return PartitionDomain(
+        vertices=vertices,
+        vertex_index=vertex_index,
+        edges=edges,
+        faces=faces,
+        face_bench_ids=face_bench_ids,
+        tol=tol,
+    )

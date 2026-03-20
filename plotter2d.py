@@ -355,3 +355,72 @@ def plot_faces(
     ax.set_title("Extracted Faces")
     ax.grid(True, linestyle="--", alpha=0.3)
     plt.show()
+
+
+def plot_partition_domain(
+    domain,
+    show_vertex_ids=False,
+    show_edge_ids=False,
+    show_face_ids=True,
+    show_centroids=True,
+):
+    """
+    Visualize PartitionDomain for meshing inspection.
+    """
+
+    fig, ax = plt.subplots()
+
+    vertices = domain.vertices
+    edges = domain.edges
+    faces = domain.faces
+    bench_ids = domain.face_bench_ids
+
+    # ---------- face coloring ----------
+    unique_ids = list(sorted(set(bench_ids)))
+    id_to_color_index = {bid: i for i, bid in enumerate(unique_ids)}
+
+    cmap = cm.get_cmap("tab20")
+    norm = mcolors.Normalize(vmin=0, vmax=max(len(unique_ids) - 1, 1))
+
+    # ---------- draw faces ----------
+    for i, face in enumerate(faces):
+        xs = [vertices[v][0] for v in face]
+        ys = [vertices[v][1] for v in face]
+
+        xs.append(xs[0])
+        ys.append(ys[0])
+
+        color = cmap(norm(id_to_color_index[bench_ids[i]]))
+
+        ax.fill(xs, ys, color=color, alpha=0.35, edgecolor="black")
+
+        if show_face_ids:
+            cx, cy = domain.face_centroid(i)
+            ax.text(cx, cy, f"F{i}\nB{bench_ids[i]}", fontsize=8)
+
+    # ---------- draw edges ----------
+    for i, (v0, v1) in enumerate(edges):
+        x0, y0 = vertices[v0]
+        x1, y1 = vertices[v1]
+
+        ax.plot([x0, x1], [y0, y1], color="black", linewidth=1)
+
+        if show_edge_ids:
+            cx = 0.5 * (x0 + x1)
+            cy = 0.5 * (y0 + y1)
+            ax.text(cx, cy, str(i), fontsize=6, color="red")
+
+    # ---------- draw vertices ----------
+    if show_vertex_ids:
+        for i, (x, y) in enumerate(vertices):
+            ax.text(x, y, str(i), fontsize=6, color="blue")
+
+    # ---------- centroids ----------
+    if show_centroids:
+        for i in range(len(faces)):
+            cx, cy = domain.face_centroid(i)
+            ax.plot(cx, cy, "ko", markersize=3)
+
+    ax.set_aspect("equal")
+    ax.set_title("PartitionDomain inspection")
+    plt.show()
