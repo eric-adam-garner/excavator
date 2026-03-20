@@ -301,7 +301,9 @@ def triangulate_partition_domain(domain, triangle_flags: str = "pA"):
 def triangle_to_halfedge_mesh(tri_mesh: TriangleMesh):
 
     mesh = half_edge_mesh.Mesh()
-
+    
+    mesh.face_region_ids = tri_mesh.triangle_region_ids
+    
     # -----------------------------
     # Create vertices
     # -----------------------------
