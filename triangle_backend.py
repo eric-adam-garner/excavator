@@ -6,6 +6,35 @@ from dataclasses import dataclass
 import numpy as np
 import triangle as tr
 
+import half_edge_mesh
+
+
+@dataclass(frozen=True)
+class TriangleInput:
+    points: np.ndarray  # shape (N, 2), float64
+    segments: np.ndarray  # shape (M, 2), int32
+    regions: np.ndarray  # shape (K, 4), float64
+
+
+@dataclass(frozen=True)
+class TriangleMesh:
+    vertices: list[Vertex]
+    triangles: list[Triangle]
+    triangle_region_ids: list[int]
+
+
+@dataclass(frozen=True)
+class Vertex:
+    x: float
+    y: float
+
+
+@dataclass(frozen=True)
+class Triangle:
+    v0: int
+    v1: int
+    v2: int
+
 
 class TrianglePrecheckReport:
     def __init__(self):
@@ -25,6 +54,322 @@ class TrianglePrecheckReport:
             f"warnings={self.warnings}, "
             f"stats={self.stats})"
         )
+
+
+def validate_domain_segments(domain):
+    """
+    Returns:
+        errors, warnings
+    """
+    errors = []
+    warnings = []
+
+    verts = domain.vertices
+    edges = domain.edges
+    tol = domain.tol
+
+    segs = [(verts[i], verts[j], idx, i, j) for idx, (i, j) in enumerate(edges)]
+
+    for i in range(len(segs)):
+        a, b, idx_ab, ia0, ia1 = segs[i]
+
+        if _is_degenerate_edge(a, b, tol):
+            errors.append(f"degenerate edge {idx_ab}: {(ia0, ia1)}")
+            continue
+
+        for j in range(i + 1, len(segs)):
+            c, d, idx_cd, ic0, ic1 = segs[j]
+
+            # skip if they share a vertex; endpoint touch is allowed there
+            shared = {ia0, ia1}.intersection({ic0, ic1})
+            relation = _segment_relation(a, b, c, d, tol)
+
+            if relation is None:
+                continue
+
+            if relation == "endpoint_touch":
+                # allowed only if they actually share an indexed endpoint
+                if not shared:
+                    errors.append(
+                        f"unexpected endpoint touch between edges {idx_ab}{(ia0, ia1)} and {idx_cd}{(ic0, ic1)}"
+                    )
+
+            elif relation == "proper_intersection":
+                errors.append(f"proper intersection between edges {idx_ab}{(ia0, ia1)} and {idx_cd}{(ic0, ic1)}")
+
+            elif relation == "t_junction":
+                errors.append(f"t-junction between edges {idx_ab}{(ia0, ia1)} and {idx_cd}{(ic0, ic1)}")
+
+            elif relation == "colinear_overlap":
+                errors.append(f"colinear overlap between edges {idx_ab}{(ia0, ia1)} and {idx_cd}{(ic0, ic1)}")
+
+    return errors, warnings
+
+
+def validate_segment_graph(points, segments):
+    """
+    Basic graph-level checks for Triangle suitability.
+
+    Returns:
+        dict with:
+            degree_map
+            dangling_vertices
+            isolated_vertices
+            nonmanifold_vertices
+    """
+    degree = defaultdict(int)
+
+    used_vertices = set()
+    for a, b in segments:
+        degree[a] += 1
+        degree[b] += 1
+        used_vertices.add(a)
+        used_vertices.add(b)
+
+    dangling_vertices = [v for v, d in degree.items() if d == 1]
+    isolated_vertices = [i for i in range(len(points)) if i not in used_vertices]
+    nonmanifold_vertices = [v for v, d in degree.items() if d > 2]
+
+    return {
+        "degree_map": dict(degree),
+        "dangling_vertices": dangling_vertices,
+        "isolated_vertices": isolated_vertices,
+        "nonmanifold_vertices": nonmanifold_vertices,
+    }
+
+
+def validate_triangle_input_geometry(tri_in, tol):
+    """
+    Triangle-focused validation beyond simple duplicate/seed checks.
+    """
+    report = TrianglePrecheckReport()
+
+    points = tri_in.points
+    segments = tri_in.segments
+
+    # 4. intersections / T-junctions / overlaps
+    inter = find_segment_intersections(points, segments, tol)
+
+    for i, j in inter["proper"]:
+        report.errors.append(f"proper segment intersection between segments {i} and {j}")
+
+    for i, j in inter["t_junction"]:
+        report.errors.append(f"T-junction between segments {i} and {j}")
+
+    for i, j in inter["overlap"]:
+        report.errors.append(f"colinear overlap between segments {i} and {j}")
+
+    # 5. graph enclosure / open chains
+    graph = validate_segment_graph(points, segments)
+
+    for v in graph["dangling_vertices"]:
+        report.errors.append(f"dangling vertex {v}")
+
+    for v in graph["nonmanifold_vertices"]:
+        report.warnings.append(f"nonmanifold/high-degree vertex {v} with degree {graph['degree_map'][v]}")
+
+    # isolated vertices are usually harmless to Triangle if unused, but suspicious
+    for v in graph["isolated_vertices"]:
+        report.warnings.append(f"isolated unused vertex {v}")
+
+    report.stats = {
+        "num_points": len(points),
+        "num_segments": len(segments),
+        "num_regions": len(tri_in.regions),
+        "num_proper_intersections": len(inter["proper"]),
+        "num_t_junctions": len(inter["t_junction"]),
+        "num_overlaps": len(inter["overlap"]),
+        "num_dangling_vertices": len(graph["dangling_vertices"]),
+        "num_nonmanifold_vertices": len(graph["nonmanifold_vertices"]),
+        "num_isolated_vertices": len(graph["isolated_vertices"]),
+    }
+
+    return report
+
+
+def validate_triangle_input(tri_in: TriangleInput) -> None:
+    if tri_in.points.size == 0:
+        raise ValueError("Triangle input has no points.")
+
+    if tri_in.segments.size == 0:
+        raise ValueError("Triangle input has no segments.")
+
+    if tri_in.points.ndim != 2 or tri_in.points.shape[1] != 2:
+        raise ValueError(f"Invalid points shape: {tri_in.points.shape}")
+
+    if tri_in.segments.ndim != 2 or tri_in.segments.shape[1] != 2:
+        raise ValueError(f"Invalid segments shape: {tri_in.segments.shape}")
+
+    if tri_in.regions.ndim != 2 or tri_in.regions.shape[1] != 4:
+        raise ValueError(f"Invalid regions shape: {tri_in.regions.shape}")
+
+    n = len(tri_in.points)
+
+    seen_segments = set()
+    for i, (a, b) in enumerate(tri_in.segments):
+        a = int(a)
+        b = int(b)
+
+        if a == b:
+            raise ValueError(f"Degenerate segment at index {i}: ({a}, {b})")
+
+        if not (0 <= a < n and 0 <= b < n):
+            raise ValueError(f"Out-of-range segment at index {i}: ({a}, {b})")
+
+        key = (a, b) if a < b else (b, a)
+        if key in seen_segments:
+            raise ValueError(f"Duplicate segment detected: {key}")
+        seen_segments.add(key)
+
+
+def build_triangle_input(domain) -> TriangleInput:
+    points = np.asarray(domain.vertices, dtype=np.float64)
+    segments = np.asarray(domain.edges, dtype=np.int32)
+
+    faces = domain.faces
+    bench_ids = domain.face_bench_ids
+
+    unique_bench_ids = sorted(set(bench_ids))
+    region_id_map = {bench_id: i for i, bench_id in enumerate(unique_bench_ids)}
+
+    regions = []
+
+    for face, bench_id in zip(faces, bench_ids):
+        coords = [tuple(points[v]) for v in face]
+        sx, sy = _safe_face_seed(coords)
+        rid = region_id_map[bench_id]
+
+        # Triangle region row: [x, y, attribute, max_area]
+        # max_area is ignored unless -a is passed, but the wrapper usually
+        # still wants the 4th column to exist.
+        regions.append((sx, sy, float(rid), 0.0))
+
+    regions = np.asarray(regions, dtype=np.float64)
+
+    if points.ndim != 2 or points.shape[1] != 2:
+        raise ValueError(f"points has invalid shape {points.shape}")
+
+    if segments.ndim != 2 or segments.shape[1] != 2:
+        raise ValueError(f"segments has invalid shape {segments.shape}")
+
+    if regions.ndim != 2 or regions.shape[1] != 4:
+        raise ValueError(f"regions has invalid shape {regions.shape}")
+
+    return TriangleInput(
+        points=np.ascontiguousarray(points),
+        segments=np.ascontiguousarray(segments),
+        regions=np.ascontiguousarray(regions),
+    )
+
+
+def triangulate_partition_domain(domain, triangle_flags: str = "pA"):
+    tri_in = build_triangle_input(domain)
+    validate_triangle_input(tri_in)
+
+    pre = validate_triangle_input_geometry(tri_in, domain.tol)
+    if not pre.is_valid:
+        raise RuntimeError(pre)
+
+    tri_dict = {
+        "vertices": tri_in.points,
+        "segments": tri_in.segments,
+        "regions": tri_in.regions,
+    }
+
+    out = tr.triangulate(tri_dict, triangle_flags)
+
+    if "vertices" not in out:
+        raise RuntimeError("Triangle output missing vertices.")
+    if "triangles" not in out:
+        raise RuntimeError("Triangle output missing triangles.")
+
+    vertices = [tuple(map(float, xy)) for xy in out["vertices"]]
+    triangles = [tuple(map(int, tri)) for tri in out["triangles"]]
+
+    if "triangle_attributes" in out:
+        triangle_region_ids = [int(attr[0]) for attr in out["triangle_attributes"]]
+    else:
+        triangle_region_ids = [-1] * len(triangles)
+
+    return TriangleMesh(
+        vertices=vertices,
+        triangles=triangles,
+        triangle_region_ids=triangle_region_ids,
+    )
+
+
+def triangle_to_halfedge_mesh(tri_mesh: TriangleMesh):
+
+    mesh = half_edge_mesh.Mesh()
+
+    # -----------------------------
+    # Create vertices
+    # -----------------------------
+    for idx, (x, y) in enumerate(tri_mesh.vertices):
+        mesh.vertices.append(half_edge_mesh.Vertex(id=idx, x=x, y=y))
+
+    # map for twin linking
+    edge_map = {}
+
+    # -----------------------------
+    # Create faces + halfedges
+    # -----------------------------
+    half_edge_count = 0
+    for tri_idx, (a, b, c) in enumerate(tri_mesh.triangles):
+
+        face = half_edge_mesh.Face(id=tri_idx)
+        face.region_id = tri_mesh.triangle_region_ids[tri_idx]
+
+        he0 = half_edge_mesh.HalfEdge(id=half_edge_count, origin=mesh.vertices[a])
+        half_edge_count += 1
+
+        he1 = half_edge_mesh.HalfEdge(id=half_edge_count, origin=mesh.vertices[b])
+        half_edge_count += 1
+
+        he2 = half_edge_mesh.HalfEdge(id=half_edge_count, origin=mesh.vertices[c])
+        half_edge_count += 1
+
+        he0.next = he1
+        he1.next = he2
+        he2.next = he0
+
+        he0.prev = he2
+        he1.prev = he0
+        he2.prev = he1
+
+        he0.face = face
+        he1.face = face
+        he2.face = face
+
+        face.halfedge = he0
+
+        mesh.halfedges.extend([he0, he1, he2])
+        mesh.faces.append(face)
+
+        # store directed edges
+        tri_edges = [(a, b, he0), (b, c, he1), (c, a, he2)]
+
+        for u, v, he in tri_edges:
+            key = (u, v)
+            twin_key = (v, u)
+
+            if twin_key in edge_map:
+                twin = edge_map[twin_key]
+                he.twin = twin
+                twin.twin = he
+            else:
+                edge_map[key] = he
+
+    # # -----------------------------
+    # # Detect boundary edges
+    # # -----------------------------
+    # for he in mesh.halfedges:
+    #     if he.twin is None:
+    #         he.is_boundary = True
+    #     else:
+    #         he.is_boundary = False
+
+    return mesh
 
 
 def _orient(a, b, c):
@@ -160,95 +505,6 @@ def find_segment_intersections(points, segments, tol):
     return issues
 
 
-def validate_segment_graph(points, segments):
-    """
-    Basic graph-level checks for Triangle suitability.
-
-    Returns:
-        dict with:
-            degree_map
-            dangling_vertices
-            isolated_vertices
-            nonmanifold_vertices
-    """
-    degree = defaultdict(int)
-
-    used_vertices = set()
-    for a, b in segments:
-        degree[a] += 1
-        degree[b] += 1
-        used_vertices.add(a)
-        used_vertices.add(b)
-
-    dangling_vertices = [v for v, d in degree.items() if d == 1]
-    isolated_vertices = [i for i in range(len(points)) if i not in used_vertices]
-    nonmanifold_vertices = [v for v, d in degree.items() if d > 2]
-
-    return {
-        "degree_map": dict(degree),
-        "dangling_vertices": dangling_vertices,
-        "isolated_vertices": isolated_vertices,
-        "nonmanifold_vertices": nonmanifold_vertices,
-    }
-
-
-def validate_triangle_input_geometry(tri_in, tol):
-    """
-    Triangle-focused validation beyond simple duplicate/seed checks.
-    """
-    report = TrianglePrecheckReport()
-
-    points = tri_in.points
-    segments = tri_in.segments
-
-    # 4. intersections / T-junctions / overlaps
-    inter = find_segment_intersections(points, segments, tol)
-
-    for i, j in inter["proper"]:
-        report.errors.append(f"proper segment intersection between segments {i} and {j}")
-
-    for i, j in inter["t_junction"]:
-        report.errors.append(f"T-junction between segments {i} and {j}")
-
-    for i, j in inter["overlap"]:
-        report.errors.append(f"colinear overlap between segments {i} and {j}")
-
-    # 5. graph enclosure / open chains
-    graph = validate_segment_graph(points, segments)
-
-    for v in graph["dangling_vertices"]:
-        report.errors.append(f"dangling vertex {v}")
-
-    for v in graph["nonmanifold_vertices"]:
-        report.warnings.append(f"nonmanifold/high-degree vertex {v} with degree {graph['degree_map'][v]}")
-
-    # isolated vertices are usually harmless to Triangle if unused, but suspicious
-    for v in graph["isolated_vertices"]:
-        report.warnings.append(f"isolated unused vertex {v}")
-
-    report.stats = {
-        "num_points": len(points),
-        "num_segments": len(segments),
-        "num_regions": len(tri_in.regions),
-        "num_proper_intersections": len(inter["proper"]),
-        "num_t_junctions": len(inter["t_junction"]),
-        "num_overlaps": len(inter["overlap"]),
-        "num_dangling_vertices": len(graph["dangling_vertices"]),
-        "num_nonmanifold_vertices": len(graph["nonmanifold_vertices"]),
-        "num_isolated_vertices": len(graph["isolated_vertices"]),
-    }
-
-    return report
-
-
-def _orient(a, b, c):
-    return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
-
-
-def _qpoint(p, tol):
-    return (round(p[0] / tol), round(p[1] / tol))
-
-
 def _is_degenerate_edge(a, b, tol):
     dx = b[0] - a[0]
     dy = b[1] - a[1]
@@ -337,110 +593,6 @@ def _segment_relation(a, b, c, d, tol):
     return "t_junction"
 
 
-def validate_domain_segments(domain):
-    """
-    Returns:
-        errors, warnings
-    """
-    errors = []
-    warnings = []
-
-    verts = domain.vertices
-    edges = domain.edges
-    tol = domain.tol
-
-    segs = [(verts[i], verts[j], idx, i, j) for idx, (i, j) in enumerate(edges)]
-
-    for i in range(len(segs)):
-        a, b, idx_ab, ia0, ia1 = segs[i]
-
-        if _is_degenerate_edge(a, b, tol):
-            errors.append(f"degenerate edge {idx_ab}: {(ia0, ia1)}")
-            continue
-
-        for j in range(i + 1, len(segs)):
-            c, d, idx_cd, ic0, ic1 = segs[j]
-
-            # skip if they share a vertex; endpoint touch is allowed there
-            shared = {ia0, ia1}.intersection({ic0, ic1})
-            relation = _segment_relation(a, b, c, d, tol)
-
-            if relation is None:
-                continue
-
-            if relation == "endpoint_touch":
-                # allowed only if they actually share an indexed endpoint
-                if not shared:
-                    errors.append(
-                        f"unexpected endpoint touch between edges {idx_ab}{(ia0, ia1)} and {idx_cd}{(ic0, ic1)}"
-                    )
-
-            elif relation == "proper_intersection":
-                errors.append(f"proper intersection between edges {idx_ab}{(ia0, ia1)} and {idx_cd}{(ic0, ic1)}")
-
-            elif relation == "t_junction":
-                errors.append(f"t-junction between edges {idx_ab}{(ia0, ia1)} and {idx_cd}{(ic0, ic1)}")
-
-            elif relation == "colinear_overlap":
-                errors.append(f"colinear overlap between edges {idx_ab}{(ia0, ia1)} and {idx_cd}{(ic0, ic1)}")
-
-    return errors, warnings
-
-
-@dataclass(frozen=True)
-class TriangleInput:
-    points: np.ndarray  # shape (N, 2), float64
-    segments: np.ndarray  # shape (M, 2), int32
-    regions: np.ndarray  # shape (K, 4), float64
-
-
-def build_triangle_input(domain) -> TriangleInput:
-    points = np.asarray(domain.vertices, dtype=np.float64)
-    segments = np.asarray(domain.edges, dtype=np.int32)
-
-    faces = domain.faces
-    bench_ids = domain.face_bench_ids
-
-    unique_bench_ids = sorted(set(bench_ids))
-    region_id_map = {bench_id: i for i, bench_id in enumerate(unique_bench_ids)}
-
-    regions = []
-
-    for face, bench_id in zip(faces, bench_ids):
-        coords = [tuple(points[v]) for v in face]
-        sx, sy = _safe_face_seed(coords)
-        rid = region_id_map[bench_id]
-
-        # Triangle region row: [x, y, attribute, max_area]
-        # max_area is ignored unless -a is passed, but the wrapper usually
-        # still wants the 4th column to exist.
-        regions.append((sx, sy, float(rid), 0.0))
-
-    regions = np.asarray(regions, dtype=np.float64)
-
-    if points.ndim != 2 or points.shape[1] != 2:
-        raise ValueError(f"points has invalid shape {points.shape}")
-
-    if segments.ndim != 2 or segments.shape[1] != 2:
-        raise ValueError(f"segments has invalid shape {segments.shape}")
-
-    if regions.ndim != 2 or regions.shape[1] != 4:
-        raise ValueError(f"regions has invalid shape {regions.shape}")
-
-    return TriangleInput(
-        points=np.ascontiguousarray(points),
-        segments=np.ascontiguousarray(segments),
-        regions=np.ascontiguousarray(regions),
-    )
-
-
-@dataclass(frozen=True)
-class TriangleMesh:
-    vertices: list[tuple[float, float]]
-    triangles: list[tuple[int, int, int]]
-    triangle_region_ids: list[int]
-
-
 def _point_in_polygon(pt: tuple[float, float], poly: list[tuple[float, float]]) -> bool:
     x, y = pt
     wn = 0
@@ -500,74 +652,3 @@ def _safe_face_seed(face_coords: list[tuple[float, float]]) -> tuple[float, floa
         ny /= L
 
     return (0.5 * (x0 + x1) + 1e-6 * nx, 0.5 * (y0 + y1) + 1e-6 * ny)
-
-
-def validate_triangle_input(tri_in: TriangleInput) -> None:
-    if tri_in.points.size == 0:
-        raise ValueError("Triangle input has no points.")
-
-    if tri_in.segments.size == 0:
-        raise ValueError("Triangle input has no segments.")
-
-    if tri_in.points.ndim != 2 or tri_in.points.shape[1] != 2:
-        raise ValueError(f"Invalid points shape: {tri_in.points.shape}")
-
-    if tri_in.segments.ndim != 2 or tri_in.segments.shape[1] != 2:
-        raise ValueError(f"Invalid segments shape: {tri_in.segments.shape}")
-
-    if tri_in.regions.ndim != 2 or tri_in.regions.shape[1] != 4:
-        raise ValueError(f"Invalid regions shape: {tri_in.regions.shape}")
-
-    n = len(tri_in.points)
-
-    seen_segments = set()
-    for i, (a, b) in enumerate(tri_in.segments):
-        a = int(a)
-        b = int(b)
-
-        if a == b:
-            raise ValueError(f"Degenerate segment at index {i}: ({a}, {b})")
-
-        if not (0 <= a < n and 0 <= b < n):
-            raise ValueError(f"Out-of-range segment at index {i}: ({a}, {b})")
-
-        key = (a, b) if a < b else (b, a)
-        if key in seen_segments:
-            raise ValueError(f"Duplicate segment detected: {key}")
-        seen_segments.add(key)
-
-
-def triangulate_partition_domain(domain, triangle_flags: str = "pA"):
-    tri_in = build_triangle_input(domain)
-    validate_triangle_input(tri_in)
-
-    pre = validate_triangle_input_geometry(tri_in, domain.tol)
-    if not pre.is_valid:
-        raise RuntimeError(pre)
-
-    tri_dict = {
-        "vertices": tri_in.points,
-        "segments": tri_in.segments,
-        "regions": tri_in.regions,
-    }
-
-    out = tr.triangulate(tri_dict, triangle_flags)
-
-    if "vertices" not in out:
-        raise RuntimeError("Triangle output missing vertices.")
-    if "triangles" not in out:
-        raise RuntimeError("Triangle output missing triangles.")
-
-    vertices = [tuple(map(float, xy)) for xy in out["vertices"]]
-    triangles = [tuple(map(int, tri)) for tri in out["triangles"]]
-
-    if "triangle_attributes" in out:
-        triangle_region_ids = [int(attr[0]) for attr in out["triangle_attributes"]]
-    else:
-        triangle_region_ids = [-1] * len(triangles)
-
-    return TriangleMesh(
-        vertices=vertices,
-        triangles=triangles,
-        triangle_region_ids=triangle_region_ids,
-    )

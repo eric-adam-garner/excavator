@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-def plot_mesh(
+def plot_half_edge_mesh(
     mesh,
     report=None,
     show_vertices=True,
@@ -155,6 +155,7 @@ def plot_mesh(
 
     ax.set_aspect("equal")
     ax.grid(True, linestyle="--", alpha=0.3)
+    plt.show()
 
 
 def plot_pslg(pslg, show_vertex_ids=False, show_loop_ids=False, show_segment_ids=False):
@@ -430,7 +431,6 @@ def plot_triangle_mesh(
     mesh,
     show_triangle_ids=False,
     show_vertices=False,
-    show_edges=False,
     domain_edges=None,
 ):
     """

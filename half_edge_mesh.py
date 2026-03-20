@@ -54,6 +54,7 @@ class Vertex:
 class Face:
     id: int
     halfedge: HalfEdge | None = None
+    region_id: int | None = None
 
     def iter_halfedges(self) -> Iterable[HalfEdge]:
         """
@@ -129,12 +130,14 @@ class Mesh:
     vertices: list[Vertex] = field(default_factory=list)
     halfedges: list[HalfEdge] = field(default_factory=list)
     faces: list[Face] = field(default_factory=list)
+    face_region_ids: list[int] | None = None
 
     @classmethod
     def from_vertices_and_faces(
         cls,
         vertices_xy: list[tuple[float, float]],
-        face_indices: list[list[int]],
+        triangles: list[list[int]],
+        triangle_region_ids: list[int] | None = None,
     ) -> Mesh:
         """
         Build a half-edge mesh from vertex coordinates and polygon face indices.
@@ -158,12 +161,14 @@ class Mesh:
 
         mesh.vertices = [Vertex(id=i, x=xy[0], y=xy[1]) for i, xy in enumerate(vertices_xy)]
 
+        mesh.face_region_ids = triangle_region_ids
+
         edge_map: dict[tuple[int, int], HalfEdge] = {}
         undirected_counts: dict[tuple[int, int], int] = {}
 
         halfedge_id = 0
 
-        for face_id, face_vertex_ids in enumerate(face_indices):
+        for face_id, face_vertex_ids in enumerate(triangles):
             if len(face_vertex_ids) < 3:
                 raise ValueError(f"Face {face_id} has fewer than 3 vertices: {face_vertex_ids}")
 

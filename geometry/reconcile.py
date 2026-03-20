@@ -3,6 +3,11 @@ from collections import defaultdict
 import numpy as np
 from scipy.spatial import cKDTree
 
+from geometry.utils import (
+    colinear,
+    point_on_segment,
+)
+
 
 def snap_vertices(polylines, tol):
 
@@ -37,28 +42,6 @@ def snap_vertices(polylines, tol):
     return snapped
 
 
-def _point_on_segment(p, a, b, tol):
-    """
-    Check if point p lies on segment a-b within tolerance.
-    """
-    ax, ay = a
-    bx, by = b
-    px, py = p
-
-    # bounding box check
-    if px < min(ax, bx) - tol or px > max(ax, bx) + tol:
-        return False
-    if py < min(ay, by) - tol or py > max(ay, by) + tol:
-        return False
-
-    # colinearity check via area
-    area = abs((bx - ax) * (py - ay) - (by - ay) * (px - ax))
-    if area > tol * max(1.0, np.hypot(bx - ax, by - ay)):
-        return False
-
-    return True
-
-
 def split_segments(polylines, tol):
     """
     Global segment splitter:
@@ -87,7 +70,7 @@ def split_segments(polylines, tol):
         for p in vertices:
             if p == a or p == b:
                 continue
-            if _point_on_segment(p, a, b, tol):
+            if point_on_segment(p, a, b, tol):
                 split_pts.append(p)
 
         if split_pts:
@@ -125,17 +108,6 @@ def split_segments(polylines, tol):
         new_polys.append(new_poly)
 
     return new_polys
-
-
-def _colinear(a, b, c, tol):
-    """
-    Return True if a, b, c are colinear within tolerance.
-    """
-    ax, ay = a
-    bx, by = b
-    cx, cy = c
-    area = abs((bx - ax) * (cy - ay) - (by - ay) * (cx - ax))
-    return area <= tol * max(1.0, np.hypot(bx - ax, by - ay))
 
 
 def merge_colinear_segments(polylines, tol):
@@ -177,7 +149,7 @@ def merge_colinear_segments(polylines, tol):
                     changed = True
                     continue
 
-                if _colinear(a, b, c, tol):
+                if colinear(a, b, c, tol):
                     changed = True
                     continue
 

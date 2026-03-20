@@ -3,59 +3,19 @@ from __future__ import annotations
 from collections import defaultdict
 from math import atan2
 
-from geometry_reconcile import (
+from geometry.reconcile import (
     deduplicate_segments,
     snap_vertices,
     split_segments,
 )
-from partition_domain import (
-    PartitionDomain,
+from geometry.utils import (
+    face_centroid,
+    point_in_polygon,
     qpoint,
 )
+from partition_domain import PartitionDomain
 from polyline import clean_polyline
 from pslg import PSLG
-
-
-def point_in_polygon(pt, poly):
-    x, y = pt
-    wn = 0
-    n = len(poly)
-
-    for i in range(n):
-        x0, y0 = poly[i]
-        x1, y1 = poly[(i + 1) % n]
-
-        if y0 <= y:
-            if y1 > y and (x1 - x0) * (y - y0) - (x - x0) * (y1 - y0) > 0:
-                wn += 1
-        else:
-            if y1 <= y and (x1 - x0) * (y - y0) - (x - x0) * (y1 - y0) < 0:
-                wn -= 1
-
-    return wn != 0
-
-
-def face_centroid(face):
-    A = 0
-    cx = 0
-    cy = 0
-    n = len(face)
-
-    for i in range(n):
-        x0, y0 = face[i]
-        x1, y1 = face[(i + 1) % n]
-        cross = x0 * y1 - x1 * y0
-        A += cross
-        cx += (x0 + x1) * cross
-        cy += (y0 + y1) * cross
-
-    A *= 0.5
-    if abs(A) < 1e-16:
-        return face[0]
-
-    cx /= 6 * A
-    cy /= 6 * A
-    return (cx, cy)
 
 
 def assign_face_bench_ids(faces, benches, tol):
