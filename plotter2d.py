@@ -424,3 +424,67 @@ def plot_partition_domain(
     ax.set_aspect("equal")
     ax.set_title("PartitionDomain inspection")
     plt.show()
+
+
+def plot_triangle_mesh(
+    mesh,
+    show_triangle_ids=False,
+    show_vertices=False,
+    show_edges=False,
+    domain_edges=None,
+):
+    """
+    Plot Triangle mesh with region coloring.
+
+    Parameters
+    ----------
+    mesh : TriangleMesh
+    domain_edges : optional list[(i,j)]
+        Used to overlay constraint edges
+    """
+
+    verts = mesh.vertices
+    tris = mesh.triangles
+    regions = mesh.triangle_region_ids
+
+    unique_regions = sorted(set(regions))
+    cmap = cm.get_cmap("tab20")
+    norm = mcolors.Normalize(
+        vmin=min(unique_regions),
+        vmax=max(unique_regions) if len(unique_regions) > 1 else 1,
+    )
+
+    fig, ax = plt.subplots()
+
+    # ---- triangles ----
+    for i, tri in enumerate(tris):
+        xs = [verts[v][0] for v in tri]
+        ys = [verts[v][1] for v in tri]
+
+        xs.append(xs[0])
+        ys.append(ys[0])
+
+        color = cmap(norm(regions[i]))
+
+        ax.fill(xs, ys, color=color, alpha=0.6, edgecolor="black", linewidth=0.2)
+
+        if show_triangle_ids:
+            cx = sum(xs[:-1]) / 3
+            cy = sum(ys[:-1]) / 3
+            ax.text(cx, cy, str(i), fontsize=5)
+
+    # ---- constrained edges overlay ----
+    if domain_edges is not None:
+        for a, b in domain_edges:
+            x0, y0 = verts[a]
+            x1, y1 = verts[b]
+            ax.plot([x0, x1], [y0, y1], color="red", linewidth=1.5)
+
+    # ---- vertices ----
+    if show_vertices:
+        for i, (x, y) in enumerate(verts):
+            ax.text(x, y, str(i), fontsize=5, color="blue")
+
+    ax.set_aspect("equal")
+    ax.set_title("Triangle Mesh")
+    plt.show()
