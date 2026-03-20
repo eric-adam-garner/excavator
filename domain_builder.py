@@ -18,7 +18,7 @@ from polyline import clean_polyline
 from pslg import PSLG
 
 
-def assign_face_bench_ids(faces, benches, tol):
+def assign_face_region_ids(faces, benches, tol):
 
     bench_polys = [clean_polyline(b.to_2d(), tol) for b in benches]
 
@@ -296,7 +296,7 @@ def build_partition_domain(benches, tol: float) -> PartitionDomain:
     all_faces_xy = extract_faces_from_edges(edges_xy, tol)
     faces_xy = filter_faces(all_faces_xy, tol, min_area=None)
 
-    face_bench_ids = assign_face_bench_ids(faces_xy, benches, tol)
+    face_region_ids = assign_face_region_ids(faces_xy, benches, tol)
 
     vertex_index: dict[tuple[int, int], int] = {}
     vertices: list[tuple[float, float]] = []
@@ -339,14 +339,14 @@ def build_partition_domain(benches, tol: float) -> PartitionDomain:
         if len(cleaned_vids) >= 3:
             faces.append(cleaned_vids)
 
-    if len(faces) != len(face_bench_ids):
-        raise RuntimeError(f"Face count / bench-id count mismatch: {len(faces)} vs {len(face_bench_ids)}")
+    if len(faces) != len(face_region_ids):
+        raise RuntimeError(f"Face count / bench-id count mismatch: {len(faces)} vs {len(face_region_ids)}")
 
     return PartitionDomain(
         vertices=vertices,
         vertex_index=vertex_index,
         edges=edges,
         faces=faces,
-        face_bench_ids=face_bench_ids,
+        face_region_ids=face_region_ids,
         tol=tol,
     )

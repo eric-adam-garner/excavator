@@ -21,7 +21,7 @@ class PartitionDomain:
             Constrained partition edges as pairs of vertex indices.
         faces:
             Faces as ordered vertex-index loops.
-        face_bench_ids:
+        face_region_ids:
             Bench id for each face.
         tol:
             Quantization / reconciliation tolerance.
@@ -31,7 +31,7 @@ class PartitionDomain:
     vertex_index: dict[tuple[int, int], int]
     edges: list[tuple[int, int]]
     faces: list[list[int]]
-    face_bench_ids: list[Any]
+    face_region_ids: list[Any]
     tol: float
 
     def face_centroid(self, face_idx: int) -> Point2D:

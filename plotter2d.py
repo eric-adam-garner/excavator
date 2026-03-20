@@ -374,7 +374,7 @@ def plot_partition_domain(
     vertices = domain.vertices
     edges = domain.edges
     faces = domain.faces
-    bench_ids = domain.face_bench_ids
+    bench_ids = domain.face_region_ids
 
     # ---------- face coloring ----------
     unique_ids = list(sorted(set(bench_ids)))
@@ -487,4 +487,43 @@ def plot_triangle_mesh(
 
     ax.set_aspect("equal")
     ax.set_title("Triangle Mesh")
+    plt.show()
+
+
+def plot_mesh_edges(mesh, edge_ids, show_edge_ids=False, show_vertex_ids=False, linewidth=2):
+    """
+    Plot selected edges from a HalfEdgeMesh.
+
+    Parameters
+    ----------
+    mesh : HalfEdgeMesh
+    edge_ids : list[int]
+        Indices into mesh.edges
+    """
+
+    fig, ax = plt.subplots()
+
+    for eid in edge_ids:
+        u = mesh.halfedges[eid].origin
+        v = mesh.halfedges[eid].dest
+
+        x0 = u.x
+        y0 = u.y
+
+        x1 = v.x
+        y1 = v.y
+
+        ax.plot([x0, x1], [y0, y1], linewidth=linewidth)
+
+        if show_edge_ids:
+            cx = 0.5 * (x0 + x1)
+            cy = 0.5 * (y0 + y1)
+            ax.text(cx, cy, str(eid), fontsize=8)
+
+    if show_vertex_ids:
+        for vid, v in enumerate(mesh.vertices):
+            ax.text(v.x, v.y, str(vid), fontsize=6)
+
+    ax.set_aspect("equal")
+    ax.set_title("HalfEdgeMesh Edge Subset")
     plt.show()

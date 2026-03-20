@@ -727,3 +727,156 @@ class Mesh:
             warnings=warnings,
             stats=stats,
         )
+
+    def bounding_box_raw(self):
+        """
+        Compute axis-aligned bounding rectangle of a HalfEdgeMesh.
+
+        Returns
+        -------
+        xmin, ymin, xmax, ymax
+        """
+
+        if not self.vertices:
+            raise ValueError("Mesh has no vertices")
+
+        xmin = float("inf")
+        ymin = float("inf")
+        xmax = float("-inf")
+        ymax = float("-inf")
+
+        for v in self.vertices:
+            x = v.x
+            y = v.y
+
+            if x < xmin:
+                xmin = x
+            if y < ymin:
+                ymin = y
+            if x > xmax:
+                xmax = x
+            if y > ymax:
+                ymax = y
+
+        return xmin, ymin, xmax, ymax
+
+    def bounding_box(self, padding=0.0):
+        xmin, ymin, xmax, ymax = self.bounding_box_raw()
+
+        dx = xmax - xmin
+        dy = ymax - ymin
+
+        xmin -= padding * dx
+        xmax += padding * dx
+        ymin -= padding * dy
+        ymax += padding * dy
+
+        return xmin, ymin, xmax, ymax
+
+
+def extract_region_loops(mesh):
+    """
+    Extract clean boundary loops for each region from a half-edge mesh.
+
+    Returns
+    -------
+    dict[region_id, list[list[tuple[float, float]]]]
+        Mapping:
+            region_id -> list of coordinate loops
+    """
+
+    def is_region_boundary(he, region_id):
+        return (
+            he.face is not None
+            and he.face.region_id == region_id
+            and (he.twin is None or he.twin.face is None or he.twin.face.region_id != region_id)
+        )
+
+    region_boundary_halfedges = {}
+
+    # -------------------------------------------------
+    # Collect region-boundary halfedges
+    # -------------------------------------------------
+    for he in mesh.halfedges:
+        if he.face is None:
+            continue
+
+        region_id = he.face.region_id
+
+        if is_region_boundary(he, region_id):
+            region_boundary_halfedges.setdefault(region_id, []).append(he)
+
+    region_loops = {}
+
+    # -------------------------------------------------
+    # For each region, trace loops
+    # -------------------------------------------------
+    for region_id, boundary_hes in region_boundary_halfedges.items():
+        boundary_ids = {he.id for he in boundary_hes}
+        by_id = {he.id: he for he in boundary_hes}
+
+        # Build successor map:
+        # after boundary halfedge he, continue walking along the same region
+        successor = {}
+
+        for he in boundary_hes:
+            cur = he.next
+            if cur is None:
+                raise RuntimeError(f"Half-edge {he.id} has no next pointer.")
+
+            # Walk around the incident region until the next boundary halfedge
+            # of the same region is found.
+            while cur.id not in boundary_ids:
+                if cur.twin is None or cur.twin.next is None:
+                    raise RuntimeError(
+                        f"Could not find successor for region boundary half-edge {he.id} " f"in region {region_id}."
+                    )
+                cur = cur.twin.next
+
+            successor[he.id] = cur.id
+
+        # Trace loops through successor map
+        used = set()
+        loops = []
+
+        for start_he in boundary_hes:
+            if start_he.id in used:
+                continue
+
+            loop = []
+            curr_id = start_he.id
+
+            while curr_id not in used:
+                used.add(curr_id)
+
+                he = by_id[curr_id]
+                loop.append((he.origin.x, he.origin.y))
+
+                curr_id = successor[curr_id]
+
+            if len(loop) >= 3:
+                loops.append(loop)
+
+        region_loops[region_id] = loops
+
+    return region_loops
+
+
+def extract_outer_loop_from_mesh(mesh):
+    """
+    Extract the single outer boundary loop from a partition half-edge mesh.
+
+    Returns
+    -------
+    outer_loop : list[(x, y)]
+    """
+    raw_loops_vids = mesh.trace_boundary_loops_vertex_ids()
+
+    if not raw_loops_vids:
+        raise RuntimeError("No boundary loops found in mesh.")
+
+    if len(raw_loops_vids) != 1:
+        raise RuntimeError(f"Expected exactly one outer boundary loop for Case A, got {len(raw_loops_vids)}")
+
+    loop_vids = raw_loops_vids[0]
+    return [(mesh.vertices[i].x, mesh.vertices[i].y) for i in loop_vids]

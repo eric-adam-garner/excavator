@@ -7,6 +7,10 @@ import numpy as np
 import triangle as tr
 
 import half_edge_mesh
+from geometry.utils import (
+    face_centroid,
+    point_in_polygon,
+)
 
 
 @dataclass(frozen=True)
@@ -227,7 +231,7 @@ def build_triangle_input(domain) -> TriangleInput:
     segments = np.asarray(domain.edges, dtype=np.int32)
 
     faces = domain.faces
-    bench_ids = domain.face_bench_ids
+    bench_ids = domain.face_region_ids
 
     unique_bench_ids = sorted(set(bench_ids))
     region_id_map = {bench_id: i for i, bench_id in enumerate(unique_bench_ids)}
@@ -259,6 +263,22 @@ def build_triangle_input(domain) -> TriangleInput:
         points=np.ascontiguousarray(points),
         segments=np.ascontiguousarray(segments),
         regions=np.ascontiguousarray(regions),
+    )
+
+
+def triangulate_shell_domain(shell_domain, outer_loop, inner_loop):
+    outer_tri_mesh = triangulate_partition_domain(shell_domain, triangle_flags="pA")
+
+    outer_triangles = []
+    for tri in outer_tri_mesh.triangles:
+        c = face_centroid([outer_tri_mesh.vertices[i] for i in tri])
+        if point_in_polygon(c, outer_loop) and not point_in_polygon(c, inner_loop):
+            outer_triangles.append(tri)
+
+    return TriangleMesh(
+        vertices=outer_tri_mesh.vertices,
+        triangles=outer_triangles,
+        triangle_region_ids=np.zeros(len(outer_triangles), dtype=int).tolist(),
     )
 
 
@@ -301,9 +321,9 @@ def triangulate_partition_domain(domain, triangle_flags: str = "pA"):
 def triangle_to_halfedge_mesh(tri_mesh: TriangleMesh):
 
     mesh = half_edge_mesh.Mesh()
-    
+
     mesh.face_region_ids = tri_mesh.triangle_region_ids
-    
+
     # -----------------------------
     # Create vertices
     # -----------------------------
@@ -654,3 +674,59 @@ def _safe_face_seed(face_coords: list[tuple[float, float]]) -> tuple[float, floa
         ny /= L
 
     return (0.5 * (x0 + x1) + 1e-6 * nx, 0.5 * (y0 + y1) + 1e-6 * ny)
+
+
+def weld_triangle_meshes(
+    mesh_a: TriangleMesh,
+    mesh_b: TriangleMesh,
+    tol: float,
+) -> TriangleMesh:
+    """
+    Weld two triangle meshes by merging coincident vertices.
+
+    Deterministic, tolerance-based spatial hashing.
+    """
+
+    def q(x: float, y: float) -> tuple[int, int]:
+        return (round(x / tol), round(y / tol))
+
+    vertex_map: dict[tuple[int, int], int] = {}
+    vertices: list[Vertex] = []
+
+    def get_vid(v: Vertex) -> int:
+        key = q(v[0], v[1])
+        if key not in vertex_map:
+            vertex_map[key] = len(vertices)
+            vertices.append(v)
+        return vertex_map[key]
+
+    # ---- remap mesh A vertices
+    remap_a = [get_vid(v) for v in mesh_a.vertices]
+
+    # ---- remap mesh B vertices
+    remap_b = [get_vid(v) for v in mesh_b.vertices]
+
+    triangles = []
+    triangle_region_ids: list[int] = []
+
+    # ---- copy A triangles
+    for tri, rid in zip(mesh_a.triangles, mesh_a.triangle_region_ids):
+        triangles.append((remap_a[tri[0]], remap_a[tri[1]], remap_a[tri[2]]))
+        triangle_region_ids.append(rid)
+
+    # ---- copy B triangles
+    for tri, rid in zip(mesh_b.triangles, mesh_b.triangle_region_ids):
+        triangles.append(
+            (
+                remap_b[tri[0]],
+                remap_b[tri[1]],
+                remap_b[tri[2]],
+            )
+        )
+        triangle_region_ids.append(rid)
+
+    return TriangleMesh(
+        vertices=vertices,
+        triangles=triangles,
+        triangle_region_ids=triangle_region_ids,
+    )
