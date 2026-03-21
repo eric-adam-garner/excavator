@@ -187,13 +187,11 @@ def realize_extruded_vertices(connectivity, region_z, base_z=0.0):
     """
     verts3d = []
 
-    # top region-local vertices
     for base_vid, region_id in connectivity.top_vertex_keys:
         x, y = connectivity.vertices_2d[base_vid]
         z = region_z[region_id]
         verts3d.append((x, y, z))
 
-    # base vertices
     for base_vid in connectivity.base_vertices:
         x, y = connectivity.vertices_2d[base_vid]
         verts3d.append((x, y, base_z))

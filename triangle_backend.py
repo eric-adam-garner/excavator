@@ -272,7 +272,7 @@ def build_triangle_input(domain) -> TriangleInput:
     )
 
 
-def triangulate_shell_domain(shell_domain, outer_loop, inner_loop):
+def triangulate_shell_domain(shell_domain, outer_loop, inner_loop, level_id):
     outer_tri_mesh = triangulate_partition_domain(shell_domain, triangle_flags="pA")
 
     outer_triangles = []
@@ -284,7 +284,7 @@ def triangulate_shell_domain(shell_domain, outer_loop, inner_loop):
     return TriangleMesh(
         vertices=outer_tri_mesh.vertices,
         triangles=outer_triangles,
-        triangle_region_ids=(-1 * np.ones(len(outer_triangles), dtype=int)).tolist(),
+        triangle_region_ids=(level_id * np.ones(len(outer_triangles), dtype=int)).tolist(),
     )
 
 

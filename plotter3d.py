@@ -9,12 +9,26 @@ from vedo import (
 from extrusion import realize_extruded_vertices
 
 
-def plot_extrusion_vedo(connectivity, triangle_region_ids, z_prev, z, color_by_region=True, wireframe=False):
+def plot_extrusion_vedo(
+    connectivity,
+    level_map,
+    current_level,
+    triangle_region_ids,
+    z_prev,
+    z,
+    static_meshes=None,
+    color_by_region=True,
+    wireframe=False,
+):
 
     faces = []
     colors = []
 
     plt = Plotter()
+
+    if static_meshes is not None:
+        for mesh in static_meshes:
+            plt.add(Mesh(mesh).color([150, 150, 150]))
 
     # ---------- initial bench
     current_bench = 5
@@ -41,15 +55,19 @@ def plot_extrusion_vedo(connectivity, triangle_region_ids, z_prev, z, color_by_r
     colors = np.asarray(colors, dtype=np.uint8)
 
     # ---------- helper to build region_z
-    def build_region_z(bench):
+    def build_region_z(bench, level_map):
         region_z = {}
+
         for bench_id in range(len(triangle_region_ids)):
             region_z[bench_id] = z if bench_id < bench else z_prev
-        region_z[-1] = z_prev
+
+        for key, val in level_map.items():
+            region_z[key] = val
+
         return region_z
 
     # ---------- initial geometry
-    region_z = build_region_z(current_bench)
+    region_z = build_region_z(current_bench, level_map)
     verts3d = realize_extruded_vertices(connectivity, region_z)
     verts = np.asarray(verts3d, dtype=float)
 
@@ -74,7 +92,7 @@ def plot_extrusion_vedo(connectivity, triangle_region_ids, z_prev, z, color_by_r
 
     # ---------- regeneration function
     def regenerate():
-        region_z = build_region_z(state["bench"])
+        region_z = build_region_z(state["bench"], level_map)
         verts3d = realize_extruded_vertices(connectivity, region_z)
         new_pts = np.asarray(verts3d, dtype=float)
 
