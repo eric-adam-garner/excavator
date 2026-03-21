@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 from matplotlib import cm
 from vedo import (
@@ -15,6 +17,8 @@ from triangle_backend import (
     triangle_to_halfedge_mesh,
     weld_triangle_meshes,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def plot_extrusion_vedo(
@@ -43,6 +47,8 @@ def plot_extrusion_vedo(
 
         for key, val in level_map.items():
             region_z[key] = val
+
+        logger.info("recomputed level bench vertex positions")
 
         return region_z
 
@@ -84,6 +90,8 @@ def plot_extrusion_vedo(
 
         faces = np.asarray(faces, dtype=int)
         colors = np.asarray(colors, dtype=np.uint8)
+
+        logger.info("rebuilt level connectivity")
 
         return connectivity, bench_tri_mesh, faces, colors
 

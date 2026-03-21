@@ -1,6 +1,10 @@
+import logging
+
 import trimesh
 
 from extrusion import extrude_mesh_between_z
+
+logger = logging.getLogger(__name__)
 
 
 def export_bench_slabs_obj(bench_tri_mesh, level_id_height_map, level_id, level_file_id, path):
@@ -22,3 +26,5 @@ def export_bench_slabs_obj(bench_tri_mesh, level_id_height_map, level_id, level_
         msh_tm = trimesh.Trimesh(vertices=vertices, faces=faces)
         msh_tm.fix_normals()
         msh_tm.export(path / f"{level_file_id}-{bench_id}.obj")
+
+    logger.info(f"exported level: {level_file_id} slabs")

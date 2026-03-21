@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import re
 from pathlib import Path
@@ -19,6 +20,7 @@ from half_edge_mesh import (
 )
 from io_.export_slabs import export_bench_slabs_obj
 from io_.load_benches import load_benches_json
+from logger import setup_logging
 from triangle_backend import (
     triangle_to_halfedge_mesh,
     triangulate_partition_domain,
@@ -27,7 +29,6 @@ from triangle_backend import (
 from vis.plotter3d import plot_extrusion_vedo
 
 # TODO: cleanup
-# TODO: Log export event
 # TODO: Add documentation
 # TODO: Package
 
@@ -45,6 +46,9 @@ def extract_layer_number(filename: str) -> int:
 
 
 if __name__ == "__main__":
+
+    logger = setup_logging()
+    logger = logging.getLogger(__name__)
 
     level_height_filename_map = {}
     for filename in os.listdir("data/input"):
@@ -77,6 +81,8 @@ if __name__ == "__main__":
 
         if z == Z_INIT:
             continue
+
+        logger.info(f"processing {filename}")
 
         filename = level_height_filename_map[z]
 
