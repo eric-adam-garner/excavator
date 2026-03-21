@@ -4,17 +4,13 @@ import os
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-
 from bench_io import (
     export_bench_slabs,
     load_benches_json,
 )
 from domain_builder import build_partition_domain
 from domain_validator import validate_partition_domain
-from extrusion import (
-    build_extruded_connectivity_from_mesh,
-)
+from extrusion import build_extruded_connectivity_from_mesh
 from geometry.tolerance import recommend_tol
 from half_edge_mesh import (
     extract_outer_loop_from_mesh,
@@ -30,7 +26,9 @@ from triangle_backend import (
 )
 
 # TODO: handle multiple levels
-# TODO: animate excavation sequence
+# TODO: Log export event
+# TODO: Add documentation
+# TODO: Package
 
 
 def iterate_descending(d: dict[float, Any]):
