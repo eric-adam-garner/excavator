@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -12,7 +14,6 @@ from domain_builder import build_partition_domain
 from domain_validator import validate_partition_domain
 from extrusion import (
     build_extruded_connectivity_from_mesh,
-    realize_extruded_vertices,
 )
 from geometry.tolerance import recommend_tol
 from half_edge_mesh import (
@@ -38,9 +39,6 @@ def iterate_descending(d: dict[float, Any]):
 
 
 if __name__ == "__main__":
-
-    import os
-    from pathlib import Path
 
     bench_dir_path = Path("data/input")
     output_path = Path("data/output")
@@ -91,11 +89,15 @@ if __name__ == "__main__":
         half_edge_mesh = triangle_to_halfedge_mesh(tri_mesh)
 
         connectivity = build_extruded_connectivity_from_mesh(half_edge_mesh)
-        region_z = {id: np.random.choice([z, z_prev]) for id in set(tri_mesh.triangle_region_ids)}
-        region_z[-1] = z_prev
-        verts3d = realize_extruded_vertices(connectivity, region_z)
 
-        plot_extrusion_vedo(connectivity, verts3d, color_by_region=True, wireframe=False)
+        plot_extrusion_vedo(
+            connectivity,
+            triangle_region_ids=tri_mesh.triangle_region_ids,
+            z_prev=z_prev,
+            z=z,
+            color_by_region=True,
+            wireframe=False,
+        )
 
         # TODO: retain all mesh faces above z for render in next excavation level
         z_prev = z
