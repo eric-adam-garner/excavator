@@ -32,12 +32,18 @@ class Vertex:
     x: float
     y: float
 
+    def to_tuple(self):
+        return (self.x, self.y)
+
 
 @dataclass(frozen=True)
 class Triangle:
     v0: int
     v1: int
     v2: int
+
+    def to_tuple(self):
+        return (self.v0, self.v1, self.v2)
 
 
 class TrianglePrecheckReport:
@@ -278,7 +284,7 @@ def triangulate_shell_domain(shell_domain, outer_loop, inner_loop):
     return TriangleMesh(
         vertices=outer_tri_mesh.vertices,
         triangles=outer_triangles,
-        triangle_region_ids=np.zeros(len(outer_triangles), dtype=int).tolist(),
+        triangle_region_ids=(-1 * np.ones(len(outer_triangles), dtype=int)).tolist(),
     )
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any
 
@@ -167,7 +168,6 @@ def build_extruded_connectivity_from_mesh(mesh):
     # Optional bottom surface
     # -------------------------
     base_triangles: list[tuple[int, int, int]] = []
-    # Leave empty for now unless you want a closed solid immediately.
 
     return ExtrudedConnectivity(
         vertices_2d=vertices_2d,
@@ -199,3 +199,59 @@ def realize_extruded_vertices(connectivity, region_z, base_z=0.0):
         verts3d.append((x, y, base_z))
 
     return verts3d
+
+
+def extrude_mesh_between_z(vertices, faces, z0, z1):
+    """
+    Extrude a planar triangle mesh between z0 and z1 into a closed 3D mesh.
+
+    Parameters
+    ----------
+    vertices : list[(float, float)]
+        2D vertex coordinates
+    faces : list[(int, int, int)]
+        triangle indices (assumed CCW in XY plane)
+    z0 : float
+    z1 : float
+
+    Returns
+    -------
+    vertices_3d : list[(float, float, float)]
+    faces_3d : list[(int, int, int)]
+    """
+
+    n = len(vertices)
+
+    # ---- create bottom + top vertices
+    vertices_3d = [(x, y, z0) for (x, y) in vertices] + [(x, y, z1) for (x, y) in vertices]
+
+    faces_3d = []
+
+    # ---- bottom faces (same winding)
+    for a, b, c in faces:
+        faces_3d.append((a, b, c))
+
+    # ---- top faces (reverse winding)
+    for a, b, c in faces:
+        faces_3d.append((c + n, b + n, a + n))
+
+    # ---- find boundary edges
+    edge_count = defaultdict(int)
+
+    for a, b, c in faces:
+        for u, v in [(a, b), (b, c), (c, a)]:
+            edge = tuple(sorted((u, v)))
+            edge_count[edge] += 1
+
+    boundary_edges = [e for e, c in edge_count.items() if c == 1]
+
+    # ---- stitch side walls
+    for a, b in boundary_edges:
+        a_top = a + n
+        b_top = b + n
+
+        # quad → 2 triangles
+        faces_3d.append((a, b, b_top))
+        faces_3d.append((a, b_top, a_top))
+
+    return vertices_3d, faces_3d
