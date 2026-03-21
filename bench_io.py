@@ -30,7 +30,7 @@ def load_benches_json(path: str | Path) -> list[BenchPolyline]:
     return benches
 
 
-def export_bench_slabs(bench_tri_mesh, z0, z1, path):
+def export_bench_slabs_obj(bench_tri_mesh, z0, z1, path):
     bench_faces = {key: [] for key in set(bench_tri_mesh.triangle_region_ids)}
     for idx, bench_id in enumerate(bench_tri_mesh.triangle_region_ids):
         bench_faces[bench_id].append(bench_tri_mesh.triangles[idx])

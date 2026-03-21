@@ -11,24 +11,20 @@ from extrusion import realize_extruded_vertices
 
 def plot_extrusion_vedo(
     connectivity,
-    level_map,
-    current_level,
+    level_id_height_map,
+    level_id,
     triangle_region_ids,
-    z_prev,
-    z,
-    static_meshes=None,
     color_by_region=True,
     wireframe=False,
 ):
+
+    z_prev = level_id_height_map[level_id + 1]
+    z = level_id_height_map[level_id]
 
     faces = []
     colors = []
 
     plt = Plotter()
-
-    if static_meshes is not None:
-        for mesh in static_meshes:
-            plt.add(Mesh(mesh).color([150, 150, 150]))
 
     # ---------- initial bench
     current_bench = 5
@@ -67,7 +63,7 @@ def plot_extrusion_vedo(
         return region_z
 
     # ---------- initial geometry
-    region_z = build_region_z(current_bench, level_map)
+    region_z = build_region_z(current_bench, level_id_height_map)
     verts3d = realize_extruded_vertices(connectivity, region_z)
     verts = np.asarray(verts3d, dtype=float)
 
@@ -88,11 +84,11 @@ def plot_extrusion_vedo(
     plt.add(mesh)
 
     # ---------- store mutable state
-    state = {"bench": current_bench, "mesh": mesh}
+    state = {"bench": current_bench, "level": level_id, "mesh": mesh}
 
     # ---------- regeneration function
     def regenerate():
-        region_z = build_region_z(state["bench"], level_map)
+        region_z = build_region_z(state["bench"], level_id_height_map)
         verts3d = realize_extruded_vertices(connectivity, region_z)
         new_pts = np.asarray(verts3d, dtype=float)
 
@@ -101,7 +97,7 @@ def plot_extrusion_vedo(
         plt.render()
 
     # ---------- slider callback
-    def slider_callback(widget, event):
+    def bench_slider_callback(widget, event):
         rep = widget.GetRepresentation()
         val = int(round(rep.GetValue()))
         rep.SetValue(val)
@@ -110,9 +106,34 @@ def plot_extrusion_vedo(
             state["bench"] = val
             regenerate()
 
-    xmax = max(connectivity.top_triangle_regions) + 1
+    def level_slider_callback(widget, event):
+        rep = widget.GetRepresentation()
+        val = int(round(rep.GetValue()))
+        rep.SetValue(val)
 
-    plt.add_slider(slider_callback, xmin=0, xmax=xmax, value=current_bench, title="bench")
+        if val != state["level"]:
+            state["level"] = val
+            pass
+
+    xmax_bench_slider = max(connectivity.top_triangle_regions) + 1
+    xmax_level_slider = -min(connectivity.top_triangle_regions)
+
+    plt.add_slider(
+        bench_slider_callback,
+        xmin=0,
+        xmax=xmax_bench_slider,
+        value=current_bench,
+        title="bench",
+        pos=[(0.6, 0.05), (0.8, 0.05)],
+    )
+    plt.add_slider(
+        level_slider_callback,
+        xmin=0,
+        xmax=xmax_level_slider,
+        value=level_id,
+        title="level",
+        pos=[(0.2, 0.05), (0.4, 0.05)],
+    )
 
     z_mid = 0.5 * (z_prev + z)
     pivot = (cx, cy, z_mid)
