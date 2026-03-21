@@ -1,0 +1,11 @@
+numpy
+
+[dev]
+excavator[test]
+pre-commit
+build
+twine
+
+[test]
+pytest
+pytest-cov

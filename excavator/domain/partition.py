@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from geometry import Point2D
-from geometry.utils import polygon_centroid
+from excavator.geometry import Point2D
+from excavator.geometry.utils import polygon_centroid
 
 
 @dataclass(frozen=True)

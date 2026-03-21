@@ -1,5 +1,6 @@
 import numpy as np
-from geometry import Point2D
+
+from excavator.geometry import Point2D
 
 
 def point_in_polygon(pt, poly):

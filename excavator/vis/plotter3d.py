@@ -4,19 +4,10 @@ import logging
 
 import numpy as np
 from matplotlib import cm
-from vedo import (
-    Mesh,
-    Plotter,
-)
+from vedo import Mesh, Plotter
 
-from extrusion import (
-    build_extruded_connectivity_from_mesh,
-    realize_extruded_vertices,
-)
-from triangle_backend import (
-    triangle_to_halfedge_mesh,
-    weld_triangle_meshes,
-)
+from excavator.extrusion import build_extruded_connectivity_from_mesh, realize_extruded_vertices
+from excavator.triangulation.triangle_backend import triangle_to_halfedge_mesh, weld_triangle_meshes
 
 logger = logging.getLogger(__name__)
 

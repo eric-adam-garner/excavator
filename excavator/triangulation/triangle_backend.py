@@ -6,8 +6,8 @@ from dataclasses import dataclass
 import numpy as np
 import triangle as tr
 
-import half_edge_mesh
-from geometry.utils import (
+import excavator.mesh.half_edge_mesh as half_edge_mesh
+from excavator.geometry.utils import (
     face_centroid,
     point_in_polygon,
 )

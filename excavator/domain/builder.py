@@ -3,20 +3,11 @@ from __future__ import annotations
 from collections import defaultdict
 from math import atan2
 
-from domain.partition import PartitionDomain
-from geometry import Point2D
-from geometry.reconcile import (
-    deduplicate_segments,
-    snap_vertices,
-    split_segments,
-)
-from geometry.utils import (
-    clean_polyline,
-    face_centroid,
-    point_in_polygon,
-    qpoint,
-)
-from pslg import PSLG
+from excavator.domain.partition import PartitionDomain
+from excavator.geometry import Point2D
+from excavator.geometry.reconcile import deduplicate_segments, snap_vertices, split_segments
+from excavator.geometry.utils import clean_polyline, face_centroid, point_in_polygon, qpoint
+from excavator.pslg import PSLG
 
 
 def assign_face_region_ids(faces, benches, tol):

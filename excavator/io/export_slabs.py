@@ -2,7 +2,7 @@ import logging
 
 import trimesh
 
-from extrusion import extrude_mesh_between_z
+from excavator.extrusion import extrude_mesh_between_z
 
 logger = logging.getLogger(__name__)
 

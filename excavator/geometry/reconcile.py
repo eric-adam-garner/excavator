@@ -3,7 +3,7 @@ from collections import defaultdict
 import numpy as np
 from scipy.spatial import cKDTree
 
-from geometry.utils import (
+from excavator.geometry.utils import (
     colinear,
     point_on_segment,
 )

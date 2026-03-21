@@ -1,0 +1,2 @@
+[console_scripts]
+excavator-demo = excavator.cli:main

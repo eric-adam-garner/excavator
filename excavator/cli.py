@@ -7,26 +7,20 @@ from pathlib import Path
 
 import numpy as np
 
-from domain.builder import (
-    build_partition_domain,
-    build_shell_domain,
-)
-from domain.validator import validate_partition_domain
-from geometry.tolerance import recommend_tol
-from geometry.utils import point_in_polygon
-from half_edge_mesh import (
-    extract_outer_loop_from_mesh,
-    extract_region_loops,
-)
-from io_.export_slabs import export_bench_slabs_obj
-from io_.load_benches import load_benches_json
-from logger import setup_logging
-from triangle_backend import (
+from excavator.domain.builder import build_partition_domain, build_shell_domain
+from excavator.domain.validator import validate_partition_domain
+from excavator.geometry.tolerance import recommend_tol
+from excavator.geometry.utils import point_in_polygon
+from excavator.io.export_slabs import export_bench_slabs_obj
+from excavator.io.load_benches import load_benches_json
+from excavator.logger import setup_logging
+from excavator.mesh.half_edge_mesh import extract_outer_loop_from_mesh, extract_region_loops
+from excavator.triangulation.triangle_backend import (
     triangle_to_halfedge_mesh,
     triangulate_partition_domain,
     triangulate_shell_domain,
 )
-from vis.plotter3d import plot_extrusion_vedo
+from excavator.vis.plotter3d import plot_extrusion_vedo
 
 # TODO: cleanup
 # TODO: Add documentation
@@ -44,8 +38,7 @@ def extract_layer_number(filename: str) -> int:
         raise ValueError(f"No number found in {filename}")
     return int(m.group(1))
 
-
-if __name__ == "__main__":
+def main():
 
     logger = setup_logging()
     logger = logging.getLogger(__name__)
@@ -145,3 +138,6 @@ if __name__ == "__main__":
         color_by_region=True,
         wireframe=False,
     )
+
+if __name__ == "__main__":
+    main()
