@@ -197,8 +197,10 @@ def plot_excavation(
     bench_tri_meshes,
     level_id_height_map,
     tol,
-    level_id,
 ):
+    num_levels = len(outer_tri_meshes)
+    
+    current_level_id = -2  # first level
     current_bench = 0
     
     print_controls()
@@ -232,14 +234,14 @@ def plot_excavation(
         
         return connectivity, bench_tri_mesh
 
-    connectivity, bench_tri_mesh = build_extrusion_connectivity(level_id)
+    connectivity, bench_tri_mesh = build_extrusion_connectivity(current_level_id)
     faces, colors = build_faces_and_colors(connectivity)
     
     region_z = build_region_z(
         connectivity,
         current_bench,
         level_id_height_map,
-        level_id,
+        current_level_id,
         )
 
     verts3d = realize_extruded_vertices(connectivity, region_z)
@@ -254,7 +256,7 @@ def plot_excavation(
     # ---------- store mutable state
     state = {
         "bench": current_bench,
-        "level": level_id,
+        "level": current_level_id,
         "mesh": mesh,
         "connectivity": connectivity,
         "bench_tri_mesh": bench_tri_mesh,
@@ -346,8 +348,8 @@ def plot_excavation(
     level_slider = plt.add_slider(
         level_slider_callback,
         xmin=1,
-        xmax=xmax_level_slider,
-        value=xmax_level_slider,
+        xmax=num_levels,
+        value=1,
         title="level",
         pos=[(0.2, 0.05), (0.4, 0.05)],
     )
@@ -355,6 +357,43 @@ def plot_excavation(
     state["bench_slider"] = bench_slider
     state["level_slider"] = level_slider
     
+    cycle_state = {
+        "on": False,
+        "bench_target": 0,
+        "level_target": 1,
+    }
+
+    def auto_cycle_timer(evt):
+        if not cycle_state["on"]:
+            return
+
+        rep_b = state["bench_slider"].GetRepresentation()
+        rep_l = state["level_slider"].GetRepresentation()
+
+        current_bench = state["bench"]
+        max_bench = int(rep_b.GetMaximumValue())
+
+        # ---------- advance bench
+        if current_bench < max_bench:
+            rep_b.SetValue(current_bench + 1)
+            bench_slider_callback(state["bench_slider"], None)
+            return
+
+        # ---------- bench finished → advance level
+        current_level_slider = int(rep_l.GetValue())
+
+        if current_level_slider < num_levels:
+            rep_l.SetValue(current_level_slider + 1)
+            level_slider_callback(state["level_slider"], None)
+
+            # reset bench
+            rep_b.SetValue(0)
+            bench_slider_callback(state["bench_slider"], None)
+            return
+
+        # ---------- full cycle complete → stop
+        cycle_state["on"] = False
+        
     rotation_state = {"on": False}
 
     def rotate_timer(evt):
@@ -365,10 +404,13 @@ def plot_excavation(
     def keypress(evt):
         if evt.keypress == "space":
             rotation_state["on"] = not rotation_state["on"]
-
+        if evt.keypress == "c":
+            cycle_state["on"] = not cycle_state["on"]
+            
     plt.add_callback("timer", rotate_timer)
     plt.add_callback("key press", keypress)
-    plt.timer_callback("start", dt=30)
+    plt.add_callback("timer", auto_cycle_timer)
+    plt.timer_callback("start", dt=100)
     
     configure_camera(plt, mesh)
 

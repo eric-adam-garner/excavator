@@ -5,6 +5,10 @@ A computational geometry pipeline for modeling staged excavation sequences and v
 
 This project constructs watertight triangulated excavation volumes from layered bench definitions and provides an interactive 3D viewer for inspection.
 
+<p align="center">
+  <img src="docs/demo.gif" width="700">
+</p>
+
 ## Features
 
 - Robust partition domain construction from bench outlines

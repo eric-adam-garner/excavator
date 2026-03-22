@@ -80,7 +80,6 @@ def run_app(
             bench_tri_meshes=artifacts.bench_tri_meshes,
             level_id_height_map=artifacts.level_id_height_map,
             tol=artifacts.tol,
-            level_id=artifacts.final_level_id,
         )
 
     return artifacts
