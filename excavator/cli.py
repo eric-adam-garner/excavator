@@ -1,41 +1,105 @@
+from __future__ import annotations
+
+import argparse
 import logging
 from pathlib import Path
 
+from excavator.app import run_app
 from excavator.logger import setup_logging
-from excavator.pipeline import ExcavationPipeline, PipelineConfig
-from excavator.vis.plotter3d import plot_excavation
 
 INPUT_BENCH_PATH = Path("data/input")
 OUTPUT_SLAB_PATH = Path("data/output")
 
 
-def main():
+def _ensure_viz_dependencies() -> None:
+    """
+    Ensure visualization dependencies are installed.
 
-    setup_logging(logging.DEBUG)
+    This prevents confusing VTK / vedo import crashes on interview machines.
+    """
+    try:
+        import vedo  # noqa: F401
+    except Exception as e:
+        raise RuntimeError(
+            "\nVisualization dependencies are missing.\n\n"
+            "Install with:\n"
+            "    pip install excavator[viz]\n"
+        ) from e
+
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="excavator-demo",
+        description="Excavator computational geometry demo",
+    )
+
+    parser.add_argument(
+        "--input",
+        type=Path,
+        default=Path("data/input"),
+        help="Input bench directory",
+    )
+
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("data/output"),
+        help="Output slab directory",
+    )
+
+    parser.add_argument(
+        "--z-init",
+        type=float,
+        default=100.0,
+        help="Initial ground elevation",
+    )
+
+    parser.add_argument(
+        "--triangle-flags",
+        type=str,
+        default="pA",
+        help="Triangle meshing flags",
+    )
+
+    parser.add_argument(
+        "--no-viz",
+        action="store_true",
+        help="Run pipeline without launching visualization",
+    )
+
+    parser.add_argument(
+        "--log-level",
+        type=str,
+        default="INFO",
+        help="Logging level (DEBUG, INFO, WARNING, ERROR)",
+    )
+
+    return parser
+
+
+def main() -> None:
+    
+    _ensure_viz_dependencies()
+    
+    parser = build_parser()
+    args = parser.parse_args()
+
+    log_level = getattr(logging, args.log_level.upper(), logging.INFO)
+    setup_logging(log_level)
+
     logger = logging.getLogger("excavator.app")
+    logger.info("CLI invocation received")
 
-    logger.info("Starting excavation application")
-
-    config = PipelineConfig(
-        input_bench_path=INPUT_BENCH_PATH,
-        output_slab_path=OUTPUT_SLAB_PATH,
-        z_init=100.0,
-        triangle_flags="pA",
-        super_loop_padding=0.05,
+    run_app(
+        input_bench_path=args.input,
+        output_slab_path=args.output,
+        z_init=args.z_init,
+        triangle_flags=args.triangle_flags,
+        visualize=not args.no_viz,
     )
 
-    pipeline = ExcavationPipeline(config)
-    artifacts = pipeline.run()
 
-    logger.info(
-        "Launching visualization | levels=%d",
-        len(artifacts.level_id_height_map) - 1,
-    )
-
-    plot_excavation(
-        outer_tri_meshes=artifacts.outer_tri_meshes,
-        bench_tri_meshes=artifacts.bench_tri_meshes,
-        level_id_height_map=artifacts.level_id_height_map,
-        tol=artifacts.tol,
-        level_id=artifacts.final_level_id,
-    )
+if __name__ == "__main__":
+    main()
+    
