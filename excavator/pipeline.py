@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -47,6 +48,8 @@ class ExcavationPipeline:
 
     def run(self) -> ExcavationArtifacts:
         self.logger.info("Pipeline started")
+        
+        t0 = time.time()
 
         level_height_filename_map, all_benches = self._discover_inputs()
         tol = recommend_tol(all_benches)
@@ -88,6 +91,9 @@ class ExcavationPipeline:
             super_loop = level_result["outer_loop"]
 
         self.logger.info("Pipeline finished")
+        
+        t1 = time.time()
+        self.logger.info(f"Pipeline completed in {t1-t0:.3f}s")
 
         return ExcavationArtifacts(
             level_id_height_map=level_id_height_map,

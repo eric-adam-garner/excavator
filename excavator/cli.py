@@ -7,9 +7,6 @@ from pathlib import Path
 from excavator.app import run_app
 from excavator.logger import setup_logging
 
-INPUT_BENCH_PATH = Path("data/input")
-OUTPUT_SLAB_PATH = Path("data/output")
-
 
 def _ensure_viz_dependencies() -> None:
     """
@@ -25,7 +22,6 @@ def _ensure_viz_dependencies() -> None:
             "Install with:\n"
             "    pip install excavator[viz]\n"
         ) from e
-
 
 
 def build_parser() -> argparse.ArgumentParser:
