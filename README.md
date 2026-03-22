@@ -14,14 +14,12 @@ This project constructs watertight triangulated excavation volumes from layered 
 - Region-aware extrusion modeling
 - Progressive excavation visualization
 - Interactive 3D viewer (VTK / vedo)
-- Logging-instrumented meshing pipeline
-- Modular pipeline architecture
 
 ## Quick Start
 
 ```bash
-git clone https://github.com/eric-adam-garner/watoga-bench-visualizer.git
-cd watoga-bench-visualizer
+git clone https://github.com/eric-adam-garner/excavator.git
+cd excavator
 pip install -e .[viz]
 excavator-demo
 ```
@@ -86,7 +84,7 @@ CLI → Pipeline → Domain → Triangulation → Mesh → Extrusion → Visuali
 
 ## Requirements
 
-Python ≥ 3.11
+Python = 3.12
 
 Core:
 - numpy
@@ -97,7 +95,6 @@ Core:
 Visualization:
 - vtk
 - vedo
-- matplotlib
 
 ## License
 
