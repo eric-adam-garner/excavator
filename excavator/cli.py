@@ -20,7 +20,7 @@ from excavator.triangulation.triangle_backend import (
     triangulate_partition_domain,
     triangulate_shell_domain,
 )
-from excavator.vis.plotter3d import plot_extrusion_vedo
+from excavator.vis.plotter3d import plot_excavation
 
 # TODO: cleanup
 # TODO: Add documentation
@@ -126,17 +126,14 @@ def main():
         outer_tri_meshes[level_id] = outer_tri_mesh
         bench_tri_meshes[level_id] = bench_tri_mesh
 
-        z_prev = z
         super_loop = outer_loop
 
-    plot_extrusion_vedo(
+    plot_excavation(
         outer_tri_meshes=outer_tri_meshes,
         bench_tri_meshes=bench_tri_meshes,
         level_id_height_map=level_id_height_map,
         tol=tol,
         level_id=level_id,
-        color_by_region=True,
-        wireframe=False,
     )
 
 if __name__ == "__main__":
