@@ -4,6 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "excavator"
+version = "0.1.0"
 authors = [{ name = "Eric Adam Garner", email = "eric.adam.garner@gmail.com" }]
 description = "Computational excavation geometry and meshing engine"
 readme = "README.md"
@@ -23,10 +24,21 @@ dependencies = [
 viz = [
     "vedo",
     "vtk",
-    "matplotlib",
+]
+test = [
+    "pytest",
+    "pytest-cov",
+]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "pre-commit",
+    "build",
+    "twine",
 ]
 
-dynamic = ["version"]
+[project.scripts]
+excavator-demo = "excavator.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -34,16 +46,6 @@ include = ["excavator*"]
 
 [tool.setuptools.package-data]
 excavator = ["*.json"]
-
-[tool.setuptools.dynamic]
-version = { file = "version.txt" }
-
-[project.optional-dependencies]
-test = ["pytest", "pytest-cov"]
-dev = ["excavator[test]", "pre-commit", "build", "twine"]
-
-[project.scripts]
-excavator-demo = "excavator.cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -61,4 +63,3 @@ line_length = 119
 select = ["E", "F", "B"]
 ignore = ["E501"]
 line-length = 119
-
