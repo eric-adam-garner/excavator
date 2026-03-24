@@ -1,7 +1,7 @@
 
 # Excavator — Bench Excavation Geometry Engine
 
-A computational geometry pipeline for modeling staged excavation sequences and visualizing progressive bench removal.
+A computational geometry pipeline for reconstructing a consistent excavation topology from noisy operational partitions.
 
 This project constructs watertight triangulated excavation volumes from layered bench definitions and provides an interactive 3D viewer for inspection.
 
